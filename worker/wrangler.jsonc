@@ -6,6 +6,7 @@
   "workers_dev": true,
   "observability": { "enabled": true },
 
+  // استقرار Cloudflare Builds با دستور cd worker && npx wrangler deploy از ریشه ریپو اجرا می‌شود.
   // پنل رستوران‌دار از همین Worker و با همان دامنه سرو می‌شود: /panel/
   // (کوکی نشست HttpOnly فقط در حالت هم‌دامنه قابل اتکاست)
   "assets": {
