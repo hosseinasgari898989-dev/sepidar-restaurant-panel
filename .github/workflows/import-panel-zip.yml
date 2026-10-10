@@ -1,0 +1,62 @@
+name: Import Sepidar panel bundle
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - ".bootstrap/READY"
+
+permissions:
+  contents: write
+
+jobs:
+  unpack:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Verify and extract uploaded bundle
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -f .bootstrap/READY
+          test -n "$(find .bootstrap -maxdepth 1 -type f -name 'part-*.b64' -print -quit)"
+          find .bootstrap -maxdepth 1 -type f -name 'part-*.b64' -print0 | sort -z | xargs -0 cat > /tmp/panel.zip.b64
+          base64 --decode /tmp/panel.zip.b64 > /tmp/panel.zip
+          unzip -t /tmp/panel.zip
+          unzip -o /tmp/panel.zip -d .
+          rm -rf .bootstrap
+
+          cat > README.md <<'EOF'
+          # سپیدار | پنل رستوران و Cloudflare Worker
+
+          این مخزن شامل Worker، APIهای عمومی سایت مشتریان، APIهای پنل رستوران، رابط پنل، مهاجرت D1 و داده اولیه منو است.
+
+          - پنل: از همان Worker، مسیر `/panel/`
+          - سلامت سرویس: `/health`
+          - API عمومی مشتریان: `/api/public/`
+          - API پنل: `/api/panel/`
+          - تنظیمات استقرار: `worker/wrangler.jsonc`
+          - راهنمای کامل: `docs/restaurant-panel.md`
+
+          ## استقرار
+
+          در Cloudflare Workers Builds، ریپازیتوری و شاخه `main` را انتخاب کنید، Root directory را `worker` بگذارید و نام Worker را با مقدار داخل `worker/wrangler.jsonc` هماهنگ کنید. پنل از همان Worker ارائه می‌شود تا نشست امن هم‌دامنه کار کند.
+
+          قبل از استفاده، پایگاه داده D1، مهاجرت و seed، و Secret با نام `SEPIDAR_PANEL_BOOTSTRAP_TOKEN` را طبق راهنمای بالا راه‌اندازی کنید. مقدار Secret هرگز نباید در این مخزن commit شود.
+
+          **توجه:** کد منوی مشتریان در مخزن جداگانه `sepidar-restaurant-platform` هنوز باید توسط مرحله بعدی به APIهای عمومی متصل شود. صرفاً واردکردن این Worker به معنی اتصال خودکار فایل HTML مشتریان نیست.
+          EOF
+
+          rm -f .github/workflows/import-panel-zip.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "Import Sepidar panel and Cloudflare Worker bundle"
+          git push origin main
