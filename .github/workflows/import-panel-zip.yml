@@ -1,0 +1,36 @@
+name: Import Sepidar panel ZIP
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "sepidar-restaurant-panel.zip"
+
+permissions:
+  contents: write
+
+jobs:
+  unpack:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Validate and extract panel bundle
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -s sepidar-restaurant-panel.zip
+          unzip -t sepidar-restaurant-panel.zip
+          unzip -o sepidar-restaurant-panel.zip -d .
+          rm -f sepidar-restaurant-panel.zip
+          rm -rf .bootstrap
+          rm -f .github/workflows/import-panel-zip.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "Import Sepidar restaurant panel bundle"
+          git push origin main
