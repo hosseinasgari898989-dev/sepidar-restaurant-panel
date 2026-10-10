@@ -3,7 +3,7 @@ import { authConfigured } from "./lib/auth.js";
 import { handlePanel } from "./routes/panel.js";
 import { handlePublic } from "./routes/public.js";
 
-const SERVICE_NAME = "sepidar-restaurant-api";
+const SERVICE_NAME = "sepidar-restaurant-panel";
 const API_VERSION = "2026-10-panel-1";
 
 function health(env) {
