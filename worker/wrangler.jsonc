@@ -2,7 +2,7 @@
   "$schema": "./node_modules/wrangler/config-schema.json",
   "name": "sepidar-restaurant-panel",
   "main": "src/index.js",
-  "compatibility_date": "2026-10-11",
+  "compatibility_date": "2026-10-10",
   "workers_dev": true,
   "observability": { "enabled": true },
 
