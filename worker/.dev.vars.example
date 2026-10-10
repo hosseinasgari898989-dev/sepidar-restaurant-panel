@@ -1,0 +1,3 @@
+# این فایل نمونه است. برای توسعه محلی آن را به .dev.vars کپی کنید و مقدار را خودتان بگذارید.
+# فایل .dev.vars هرگز نباید commit شود (در .gitignore آمده است).
+SEPIDAR_PANEL_BOOTSTRAP_TOKEN=
