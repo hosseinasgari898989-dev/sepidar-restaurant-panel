@@ -25,6 +25,8 @@
     "IMAGEKIT_URL_ENDPOINT": "https://ik.imagekit.io/amup8gp0i"
   },
 
+  "ai": { "binding": "AI" },
+
   "d1_databases": [
     {
       "binding": "DB",
