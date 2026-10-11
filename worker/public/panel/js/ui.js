@@ -71,14 +71,92 @@ export function sheet(content, { wide = false, label = "پنجره", onClose } =
   ov.innerHTML = `<div class="sh${wide ? " wide" : ""}" role="dialog" aria-modal="true" aria-label="${esc(label)}" tabindex="-1"><button class="sh-x" data-close aria-label="بستن">✕</button><div class="sh-body"></div></div>`;
   const body = ov.querySelector(".sh-body");
   const prevFocus = document.activeElement;
+
+  // Apply the selected panel theme to dynamically-created sheets. CSS alone was
+  // not enough for several templates that carry explicit light background colors.
+  function applySheetTheme() {
+    const dark = document.body.dataset.theme === "dark";
+    ov.dataset.theme = document.body.dataset.theme || "light";
+    ov.dataset.accent = document.body.dataset.accent || "orange";
+    if (!dark) {
+      for (const el of ov.querySelectorAll("[data-sheet-dark-style]")) {
+        for (const prop of ["background", "background-color", "color", "border-color", "color-scheme", "box-shadow", "caret-color"]) {
+          el.style.removeProperty(prop);
+        }
+        el.removeAttribute("data-sheet-dark-style");
+      }
+      return;
+    }
+
+    const vars = getComputedStyle(document.body);
+    const palette = {
+      card: vars.getPropertyValue("--card").trim() || "#1b222d",
+      bg: vars.getPropertyValue("--bg").trim() || "#11151d",
+      fg: vars.getPropertyValue("--fg").trim() || "#eef2f8",
+      muted: vars.getPropertyValue("--mut").trim() || "#a7b2c2",
+      line: vars.getPropertyValue("--line").trim() || "#374253",
+      soft: vars.getPropertyValue("--soft").trim() || "#242d39",
+      accent: vars.getPropertyValue("--or").trim() || "#b39aff",
+    };
+    const set = (el, styles) => {
+      if (!el) return;
+      el.dataset.sheetDarkStyle = "true";
+      for (const [key, value] of Object.entries(styles)) {
+        el.style.setProperty(key, value, "important");
+      }
+    };
+
+    set(ov, { background: "rgba(2,5,11,.82)", "backdrop-filter": "blur(10px)", "color-scheme": "dark" });
+    const surface = ov.querySelector(".sh");
+    set(surface, { background: palette.card, color: palette.fg, "border-color": palette.line, "color-scheme": "dark", "box-shadow": "0 28px 90px rgba(0,0,0,.55)" });
+
+    ov.querySelectorAll(".sh-body h1,.sh-body h2,.sh-body h3,.sh-body h4,.sh-body p,.sh-body label,.sh-body summary,.sh-body strong,.sh-body b,.sh-body li,.sh-body small").forEach((el) => {
+      if (el.matches(".mut,.fld small,.token-help,.form-note")) set(el, { color: palette.muted });
+      else set(el, { color: palette.fg });
+    });
+    ov.querySelectorAll("input:not([type=checkbox]):not([type=radio]),textarea,select,.inp,.fld input,.fld textarea,.fld select,.search input").forEach((el) => {
+      set(el, { background: palette.bg, color: palette.fg, "border-color": palette.line, "caret-color": palette.accent, "color-scheme": "dark" });
+    });
+
+    ov.querySelectorAll(".preview-card,#pv,.form-grid,.checks,.checks label,.section-t,.od-meta div,.ln,.tile3d,.cf-ic,.card,.stat,.optg,.optrow,.urlbox,.sh-body [role=group]").forEach((el) => {
+      set(el, { background: palette.bg, color: palette.fg, "border-color": palette.line });
+    });
+    ov.querySelectorAll(".preview-card,#pv").forEach((el) => set(el, {
+      background: "radial-gradient(ellipse at 85% 0%, color-mix(in srgb, " + palette.accent + " 18%, transparent), transparent 55%), " + palette.bg,
+      color: palette.fg, "border-color": palette.line
+    }));
+    ov.querySelectorAll(".tile3d").forEach((el) => set(el, {
+      background: "radial-gradient(ellipse at 50% 20%, color-mix(in srgb, " + palette.accent + " 18%, transparent), transparent 68%), linear-gradient(145deg, " + palette.bg + ", " + palette.soft + ")",
+      color: palette.fg, "border-color": palette.line
+    }));
+    ov.querySelectorAll(".actbar").forEach((el) => set(el, { background: palette.card, color: palette.fg, "border-color": palette.line }));
+    ov.querySelectorAll(".sh-x,.cf-ic,.checks label,.note-box,.srv,.nt,.tg,.btn.ghost,.icon-btn").forEach((el) => {
+      set(el, { background: palette.soft, color: palette.fg, "border-color": palette.line });
+    });
+    ov.querySelectorAll(".tg.rd,.checks label:has(input:checked),.btn.danger").forEach((el) => {
+      set(el, { background: "#3b2229", color: "#ffc0c8", "border-color": "#71404a" });
+    });
+    ov.querySelectorAll(".btn:not(.ghost):not(.danger)").forEach((el) => set(el, {
+      background: "linear-gradient(135deg, " + palette.accent + ", color-mix(in srgb, " + palette.accent + " 70%, white))",
+      color: "#10141b", "border-color": palette.accent
+    }));
+    ov.querySelectorAll("[data-sheet-dark-style]").forEach((el) => {
+      // Inline styles are marked so light mode can remove only our overrides.
+    });
+  }
+
+  const themeObserver = new MutationObserver(applySheetTheme);
+  themeObserver.observe(document.body, { attributes: true, attributeFilter: ["data-theme", "data-accent"] });
+
   const api = {
     el: ov, body,
-    set(c) { body.innerHTML = String(c); },
+    set(c) { body.innerHTML = String(c); applySheetTheme(); },
     close() {
       if (!ov.isConnected) return;
       ov.classList.add("closing");
       setTimeout(() => ov.remove(), 180);
       stack.splice(stack.indexOf(api), 1);
+      themeObserver.disconnect();
       document.removeEventListener("keydown", onKey);
       if (!stack.length) document.body.classList.remove("locked");
       prevFocus && prevFocus.focus && prevFocus.focus();
@@ -90,6 +168,7 @@ export function sheet(content, { wide = false, label = "پنجره", onClose } =
   document.addEventListener("keydown", onKey);
   api.set(content);
   document.body.appendChild(ov);
+  applySheetTheme();
   document.body.classList.add("locked");
   stack.push(api);
   requestAnimationFrame(() => { ov.classList.add("on"); ov.querySelector(".sh").focus(); });
