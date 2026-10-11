@@ -11,10 +11,13 @@ export async function loadMenu(db, restaurantId, { includeInactive = false } = {
     name: c.name,
     emoji: c.emoji,
     colors: [c.color1 || "#ffe0c2", c.color2 || "#ffb36b"],
-    options: parseJson(c.options, []),
-    removables: parseJson(c.removables, []),
+    // The system "other" category is photo-only; ignore any stale customization metadata.
+    options: c.id === "other" ? [] : parseJson(c.options, []),
+    removables: c.id === "other" ? [] : parseJson(c.removables, []),
     sort: c.sort,
-    items: items.filter((i) => i.category_id === c.id).map(itemOut),
+    items: items.filter((i) => i.category_id === c.id).map((i) => c.id === "other"
+      ? { ...itemOut(i), emoji: "📷", model_url: "", meta: {}, removables: [] }
+      : itemOut(i)),
   }));
 }
 
@@ -45,9 +48,9 @@ export function toCustomerCats(menu) {
     n: c.name,
     e: c.emoji,
     c: c.colors,
-    opts: c.options,
-    rem: c.removables,
-    items: c.items.map((i) => [i.name, i.description, i.price, i.emoji, i.image_url, i.model_url, { ...i.meta, id: i.id, ...(i.available ? {} : { na: 1 }), ...(i.removables ? { rm: i.removables } : {}) }]),
+    opts: c.id === "other" ? [] : c.options,
+    rem: c.id === "other" ? [] : c.removables,
+    items: c.items.map((i) => [i.name, i.description, i.price, c.id === "other" ? "📷" : i.emoji, i.image_url, c.id === "other" ? "" : i.model_url, { ...(c.id === "other" ? {} : i.meta), id: i.id, ...(i.available ? {} : { na: 1 }), ...(c.id === "other" ? {} : (i.removables ? { rm: i.removables } : {})) }]),
   })).filter((c) => c.items.length);
 }
 
@@ -85,13 +88,20 @@ export function validateOptions(groups) {
     if (g.type !== "one" && g.type !== "many") throw new ApiError(422, "validation_error", `نوع گروه «${t}» معتبر نیست.`);
     if (!Array.isArray(g.list) || !g.list.length || g.list.length > 20) throw new ApiError(422, "validation_error", `گزینه‌های گروه «${t}» معتبر نیستند.`);
     const names = new Set();
+    const allowedVisualEffects = new Set([
+      "", "add_lettuce", "add_tomato", "add_cheese", "add_mushroom",
+      "add_jalapeno", "add_bacon", "add_egg", "add_onion", "add_pickle",
+      "remove_chicken", "remove_sausage",
+    ]);
     const list = g.list.map((x) => {
       const n = Array.isArray(x) && typeof x[0] === "string" ? x[0].trim().slice(0, 60) : "";
       const p = Array.isArray(x) ? Number(x[1]) : NaN;
+      const visual = Array.isArray(x) && typeof x[2] === "string" ? x[2] : "";
       if (!n || !Number.isInteger(p) || Math.abs(p) > 100000000) throw new ApiError(422, "validation_error", `یکی از گزینه‌های «${t}» نام یا قیمت معتبر ندارد.`);
+      if (!allowedVisualEffects.has(visual)) throw new ApiError(422, "validation_error", `جلوهٔ سه‌بعدی گزینه «${n}» معتبر نیست.`);
       if (names.has(n)) throw new ApiError(422, "validation_error", `گزینه «${n}» در «${t}» تکراری است.`);
       names.add(n);
-      return [n, p];
+      return visual ? [n, p, visual] : [n, p];
     });
     return { t, type: g.type, list };
   });
