@@ -126,7 +126,7 @@ export default {
               </div>
               <button type="button" class="btn danger ghost sm token-revoke" data-revoke-token="${t.id}" ${canRevoke ? "" : "disabled"}>${t.revoked_at ? "لغو شده" : canRevoke ? "لغو توکن" : t.is_current ? "توکن جاری" : "منقضی‌شده"}</button>
             </article>`;
-          }).map(x=>x.s).join("")}`.s;
+          })}`.s;
           rows.querySelectorAll("[data-revoke-token]").forEach((button) => {
             button.onclick = async () => {
               const id = button.dataset.revokeToken;
