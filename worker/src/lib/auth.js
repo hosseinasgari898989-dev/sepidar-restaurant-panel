@@ -3,8 +3,8 @@ import { randomId, sha256Hex } from "./util.js";
 import { checkLimit, hit, clear } from "./ratelimit.js";
 
 export const COOKIE = "__Host-sp_panel";
-const LOGIN_LIMIT = { limit: 5, windowMs: 15 * 60 * 1000, lockMs: 15 * 60 * 1000 };   // هر IP
-const GLOBAL_LIMIT = { limit: 40, windowMs: 15 * 60 * 1000, lockMs: 10 * 60 * 1000 }; // کل سامانه، در برابر حمله توزیع‌شده
+const LOGIN_LIMIT = { limit: 5, windowMs: 15 * 60 * 1000, lockMs: 15 * 60 * 1000 };   // هر مرورگر مدیریتی
+const GLOBAL_LIMIT = { limit: 40, windowMs: 15 * 60 * 1000, lockMs: 10 * 60 * 1000 }; // کل سامانه، برای محدودکردن حمله توزیع‌شده
 
 // نقش‌ها و مجوزها؛ مجوز فقط از نشست سمت سرور خوانده می‌شود
 const ROLE_PERMS = {
