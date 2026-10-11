@@ -14,7 +14,7 @@ const PANEL_SECURITY_HEADERS = {
 };
 
 const SERVICE_NAME = "sepidar-restaurant-panel";
-const API_VERSION = "2026-10-panel-1";
+const API_VERSION = "2026-10-panel-2";
 
 function health(env) {
   const db = Boolean(env.DB);
@@ -29,7 +29,7 @@ function health(env) {
       panel_auth: authConfigured(env),          // فقط بله/خیر؛ هیچ مقداری از Secret افشا نمی‌شود
       orders: db, menu: db, reviews: db, review_reply: db, leads: db, reports: db,
       realtime: false,                          // دریافت سفارش فعلاً دوره‌ای (polling) است
-      image_upload: Boolean(env.FOOD_IMAGES),    // آپلود امن عکس فقط وقتی R2 به‌صورت binding فعال باشد
+      image_upload: Boolean(env.IMAGEKIT_PRIVATE_KEY && env.IMAGEKIT_URL_ENDPOINT), // اتصال ImageKit باید کامل باشد
       qr: Boolean(env.PUBLIC_SITE_URL),
     },
     timestamp: new Date().toISOString(),
