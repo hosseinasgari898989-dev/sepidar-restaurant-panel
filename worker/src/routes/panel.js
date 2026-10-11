@@ -492,7 +492,7 @@ on("GET", "/api/panel/qr", "restaurant", async ({ env, s }) => {
   if (!base) return json({ ok: true, configured: false, reason: "public_site_url_missing", restaurant_id: s.restaurantId });
   const u = new URL(base);
   u.searchParams.set("r", s.restaurantId);
-  return json({ ok: true, configured: true, restaurant_id: s.restaurantId, target_url: u.toString(), customer_reads_param: false });
+  return json({ ok: true, configured: true, restaurant_id: s.restaurantId, target_url: u.toString(), customer_reads_param: true });
 });
 
 // ---------- گزارش‌ها ----------
