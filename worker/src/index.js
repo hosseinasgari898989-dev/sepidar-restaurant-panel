@@ -14,7 +14,7 @@ const PANEL_SECURITY_HEADERS = {
 };
 
 const SERVICE_NAME = "sepidar-restaurant-panel";
-const API_VERSION = "2026-10-panel-6";
+const API_VERSION = "2026-10-panel-7";
 
 function health(env) {
   const db = Boolean(env.DB);
