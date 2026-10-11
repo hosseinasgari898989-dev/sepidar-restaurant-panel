@@ -268,7 +268,7 @@ on("POST", "/api/panel/menu/items", "menu", async ({ request, env, s }) => {
   const b = await readJson(request);
   const f = await itemFields(env, s, b, false);
   if (f.category_id === "other" && (!f.image_url || !f.image_url.includes("/media/"))) throw new ApiError(422, "image_required_for_other", "برای دسته «سایر» باید عکس واقعی محصول را با آپلود R2 بارگذاری کنید.");
-  await restaurantCreateLimit(env, s, "menu-item-create", 100, DAY_MS);
+  await restaurantCreateLimit(env, s, "menu-item-create", 50, DAY_MS);
   const id = f.category_id + "-" + randomId(6).toLowerCase().replace(/[^a-z0-9]/g, "x");
   const max = await env.DB.prepare("SELECT COALESCE(MAX(sort), -1) m FROM menu_items WHERE restaurant_id = ? AND category_id = ?").bind(s.restaurantId, f.category_id).first();
   await env.DB.prepare("INSERT INTO menu_items (id, restaurant_id, category_id, name, description, price, emoji, image_url, model_url, meta, removables, active, available, sort, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
