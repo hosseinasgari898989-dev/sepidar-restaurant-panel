@@ -270,7 +270,12 @@ on("POST", "/api/panel/menu/categories", "menu", async ({ request, env, s }) => 
 on("PATCH", "/api/panel/menu/categories/:id", "menu", async ({ request, env, s, p }) => {
   const b = await readJson(request);
   const f = catFields(b, true);
-  if (p.id === "other" && "name" in f && f.name !== "سایر") throw new ApiError(409, "reserved_category", "نام دسته «سایر» برای رفتار ویژه‌ی محصولات تصویری ثابت است؛ برای نام دیگر «دسته جدید» بسازید.");
+  if (p.id === "other") {
+    if ("name" in f && f.name !== "سایر") throw new ApiError(409, "reserved_category", "نام دسته «سایر» برای رفتار ویژه‌ی محصولات تصویری ثابت است؛ برای نام دیگر «دسته جدید» بسازید.");
+    f.options = "[]";
+    f.removables = "[]";
+    if ("emoji" in f) f.emoji = "📷";
+  }
   const keys = Object.keys(f);
   if (!keys.length) throw new ApiError(422, "validation_error", "تغییری ارسال نشده است.");
   const r = await env.DB.prepare(`UPDATE categories SET ${keys.map((k) => `${k} = ?`).join(", ")}, updated_at = ? WHERE restaurant_id = ? AND id = ?`)
@@ -326,7 +331,13 @@ async function itemFields(env, s, b, partial) {
 on("POST", "/api/panel/menu/items", "menu", async ({ request, env, s, url }) => {
   const b = await readJson(request);
   const f = await itemFields(env, s, b, false);
-  if (f.category_id === "other") await requireR2Photo(env, url.origin, f.image_url);
+  if (f.category_id === "other") {
+    await requireR2Photo(env, url.origin, f.image_url);
+    f.emoji = "📷";
+    f.model_url = null;
+    f.meta = "{}";
+    f.removables = "[]";
+  }
   await restaurantCreateLimit(env, s, "menu-item-create", 50, DAY_MS);
   const id = f.category_id + "-" + randomId(6).toLowerCase().replace(/[^a-z0-9]/g, "x");
   const max = await env.DB.prepare("SELECT COALESCE(MAX(sort), -1) m FROM menu_items WHERE restaurant_id = ? AND category_id = ?").bind(s.restaurantId, f.category_id).first();
@@ -344,7 +355,13 @@ on("PATCH", "/api/panel/menu/items/:id", "menu", async ({ request, env, s, p, ur
   const f = await itemFields(env, s, b, true);
   const finalCategoryId = f.category_id || before.category_id;
   const finalImageUrl = Object.prototype.hasOwnProperty.call(f, "image_url") ? f.image_url : before.image_url;
-  if (finalCategoryId === "other") await requireR2Photo(env, url.origin, finalImageUrl);
+  if (finalCategoryId === "other") {
+    await requireR2Photo(env, url.origin, finalImageUrl);
+    f.emoji = "📷";
+    f.model_url = null;
+    f.meta = "{}";
+    f.removables = "[]";
+  }
   const keys = Object.keys(f);
   if (!keys.length) throw new ApiError(422, "validation_error", "تغییری ارسال نشده است.");
   await env.DB.prepare(`UPDATE menu_items SET ${keys.map((k) => `${k} = ?`).join(", ")}, updated_at = ? WHERE id = ? AND restaurant_id = ?`)
