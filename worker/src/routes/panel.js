@@ -302,15 +302,18 @@ on("POST", "/api/panel/ai-search", "menu", async ({ request, env, s }) => {
   }
   await panelMutationLimit(env, s, "ai-price-search", 15, 60 * 60 * 1000);
   const b = await readJson(request, 4096);
-  const itemId = str(b.item_id, { min: 1, max: 80, field: "شناسه غذا" });
+  const itemId = String(b.item_id || "").trim().slice(0, 80);
   const itemName = String(b.item_name || "").trim().slice(0, 120);
   const categoryId = String(b.category_id || "").trim().slice(0, 40);
   const region = str(b.region || "ایران", { min: 2, max: 80, field: "شهر یا منطقه" });
   const itemSelect = "SELECT i.id, i.name, i.description, i.category_id, c.name AS category_name, i.price FROM menu_items i LEFT JOIN categories c ON c.restaurant_id = i.restaurant_id AND c.id = i.category_id WHERE i.restaurant_id = ? AND ";
-  let item = await env.DB.prepare(
-    itemSelect + "i.id = ? AND i.archived = 0 LIMIT 1"
-  ).bind(s.restaurantId, itemId).first();
-  // If the browser carries a stale ID, resolve only by exact name + category in this restaurant.
+  let item = null;
+  if (itemId) {
+    item = await env.DB.prepare(
+      itemSelect + "i.id = ? AND i.archived = 0 LIMIT 1"
+    ).bind(s.restaurantId, itemId).first();
+  }
+  // The browser may carry an obsolete/custom-select ID; always resolve in this restaurant's D1.
   if (!item && itemName && categoryId) {
     const matches = (await env.DB.prepare(
       itemSelect + "i.name = ? AND i.category_id = ? AND i.archived = 0 ORDER BY i.active DESC, i.updated_at DESC LIMIT 2"
@@ -320,8 +323,18 @@ on("POST", "/api/panel/ai-search", "menu", async ({ request, env, s }) => {
       throw new ApiError(409, "menu_item_ambiguous", "چند غذای هم‌نام در این دسته پیدا شد؛ منو را تازه‌سازی کن و مورد دقیق را دوباره انتخاب کن.");
     }
   }
+  // If category ID is stale too, an exact name match inside this restaurant is the last safe fallback.
+  if (!item && itemName) {
+    const matches = (await env.DB.prepare(
+      itemSelect + "i.name = ? AND i.archived = 0 ORDER BY i.active DESC, i.updated_at DESC LIMIT 2"
+    ).bind(s.restaurantId, itemName).all()).results || [];
+    if (matches.length === 1) item = matches[0];
+    else if (matches.length > 1) {
+      throw new ApiError(409, "menu_item_ambiguous", "چند غذای هم‌نام وجود دارد؛ منو را تازه‌سازی کن و غذای دقیق را انتخاب کن.");
+    }
+  }
   if (!item) {
-    throw new ApiError(404, "menu_item_not_found", "شناسه و مشخصات این غذا با منوی ذخیره‌شده همگام نیستند؛ منو را تازه‌سازی کن و دوباره انتخابش کن.");
+    throw new ApiError(404, "menu_item_not_found", "غذای انتخاب‌شده با منوی ذخیره‌شده همگام نیست. یک بار منو را تازه‌سازی کن و غذا را دوباره انتخاب کن.");
   }
 
   const now = new Date();
@@ -329,7 +342,8 @@ on("POST", "/api/panel/ai-search", "menu", async ({ request, env, s }) => {
   const today = datePart(now);
   const startDate = datePart(new Date(now.getTime() - 180 * 24 * 60 * 60 * 1000));
   const regionText = /ایران/.test(region) ? region : region + " ایران";
-  const searchQuery = '"' + String(item.name).slice(0, 80) + '" قیمت منوی رستوران در ' + regionText + " تومان";
+  const regionQuery = normalize(region) === "ایران" ? "ایران" : regionText;
+  const searchQuery = '"' + String(item.name).slice(0, 80) + '" قیمت منوی رستوران در ' + regionQuery + " تومان";
   const blockedDomains = [
     "instagram.com", "facebook.com", "youtube.com", "youtu.be", "tiktok.com",
     "x.com", "twitter.com", "threads.net", "pinterest.com", "aparat.com",
@@ -448,24 +462,50 @@ on("POST", "/api/panel/ai-search", "menu", async ({ request, env, s }) => {
       temperature: 0,
     });
   } catch (error) {
-    console.error("Cloudflare price agent error", String(error).slice(0, 240));
-    throw new ApiError(502, "price_agent_failed", "عامل هوشمند Cloudflare نتوانست منابع را بررسی کند؛ دوباره تلاش کن.");
+    console.error("Cloudflare price agent unavailable; using conservative source filter", String(error).slice(0, 240));
+    agentOutput = null;
   }
   let agentText = typeof agentOutput === "string"
     ? agentOutput
     : (agentOutput?.response || agentOutput?.output_text || agentOutput?.result?.response ||
        agentOutput?.choices?.[0]?.message?.content || agentOutput?.result?.choices?.[0]?.message?.content || "");
-  agentText = String(agentText).trim().replace(/^\x60{3}(?:json)?\s*/i, "").replace(/\s*\x60{3}$/, "");
-  let relevantIndexes;
-  try {
-    const parsed = JSON.parse(agentText);
-    relevantIndexes = parsed.relevant_indices;
-    if (!Array.isArray(relevantIndexes)) throw new Error("missing relevant_indices");
-    relevantIndexes = [...new Set(relevantIndexes.map(Number).filter((index) =>
-      Number.isInteger(index) && initialResults.some((source) => source.index === index)))];
-  } catch {
-    console.error("Cloudflare price agent returned invalid compact JSON");
-    throw new ApiError(502, "price_agent_invalid_response", "عامل هوشمند نتوانست منابع را درست ارزیابی کند؛ دوباره تلاش کن.");
+  agentText = String(agentText).trim().replace(/^\x60{3}(?:json)?\s*/i, "").replace(/\s*\x60{3}$/i, "");
+  const parseAgentIndexes = (text) => {
+    const candidates = [text];
+    const firstBrace = text.indexOf("{"), lastBrace = text.lastIndexOf("}");
+    if (firstBrace >= 0 && lastBrace > firstBrace) candidates.push(text.slice(firstBrace, lastBrace + 1));
+    for (const candidate of candidates) {
+      try {
+        const parsed = JSON.parse(candidate);
+        if (Array.isArray(parsed.relevant_indices)) {
+          return [...new Set(parsed.relevant_indices.map(Number).filter((index) =>
+            Number.isInteger(index) && initialResults.some((source) => source.index === index)))];
+        }
+      } catch {}
+    }
+    return null;
+  };
+  let relevantIndexes = agentOutput ? parseAgentIndexes(agentText) : null;
+  let usedRuleFallback = false;
+  if (!relevantIndexes) {
+    // Never fail the whole search because the model returned prose instead of JSON.
+    // This fallback is intentionally conservative: exact dish name + menu/order evidence.
+    usedRuleFallback = true;
+    const normalizedDish = normalize(item.name);
+    const forbiddenText = /(?:خبرگزاری|گزارش خبر|دستور پخت|طرز تهیه|مواد اولیه|نهاده(?:‌| )?(?:دام|طیور)|مرغ زنده|قیمت مرغ گرم|خوراک دام|poultry feed|recipe|raw ingredients|livestock feed|breaking news)/i;
+    const menuEvidence = /(?:menu|order|ordering|snappfood|foodino|delino|online food|سفارش آنلاین|ثبت سفارش|منوی رستوران|افزودن به سبد|قیمت منو)/i;
+    const fallbackIndexes = [];
+    for (const source of initialResults) {
+      const full = [source.title, source.snippet, source.page_excerpt, source._page_text].join("\n");
+      const normalized = normalize(full);
+      const exactDish = normalizedDish.length >= 3 && normalized.includes(normalizedDish);
+      const dated = Number.isFinite(source._date_ms);
+      const age = dated ? Date.now() - source._date_ms : null;
+      const fresh = age == null || (age >= -24 * 60 * 60 * 1000 && age <= 180 * 24 * 60 * 60 * 1000);
+      if (!exactDish || !fresh || forbiddenText.test(full) || !menuEvidence.test(source.url + " " + source.title + " " + full.slice(0, 2500))) continue;
+      fallbackIndexes.push(source.index);
+    }
+    relevantIndexes = fallbackIndexes;
   }
   const relevantSet = new Set(relevantIndexes);
 
