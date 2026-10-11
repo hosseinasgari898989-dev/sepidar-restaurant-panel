@@ -171,7 +171,7 @@ export const demo = {
   updateLead(id, b) { Object.assign(db.leads.find((l) => l.id === id), b); return wait({ ok: true }); },
   settings: () => wait({ ok: true, restaurant: db.restaurant, public_site_url: "https://hosseinasgari898989-dev.github.io/sepidar-restaurant-platform/" }),
   updateSettings(b) { Object.assign(db.restaurant, b); log("settings.update", { fields: Object.keys(b) }); return wait({ ok: true, restaurant: db.restaurant }); },
-  qr: () => wait({ ok: true, configured: true, demo: true, restaurant_id: "demo", target_url: "https://hosseinasgari898989-dev.github.io/sepidar-restaurant-platform/?r=demo", customer_reads_param: false }),
+  qr: () => wait({ ok: true, configured: true, demo: true, restaurant_id: "demo", target_url: "https://example.invalid/sepidar-demo-menu", customer_reads_param: true }),
   reports({ from, to } = {}) {
     const today = dayStart();
     const f = from ? Date.parse(from + "T00:00:00Z") - OFF : today - 6 * DAY;

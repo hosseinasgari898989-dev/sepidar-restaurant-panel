@@ -72,7 +72,7 @@ export async function login(request, env) {
   }
   assertSameOrigin(request, env);
   const db = env.DB;
-  // Apply the global backstop before validating the supplied device ID so malformed requests cannot bypass throttling.
+  // Global backstop must run before parsing device identity; malformed requests must not bypass login throttling.
   await checkLimit(db, "login:global", GLOBAL_LIMIT);
   let body;
   try { body = await readJson(request, 2048); }
@@ -110,11 +110,13 @@ export async function login(request, env) {
     await db.prepare("UPDATE access_tokens SET last_used_at = ? WHERE id = ?").bind(t, accessToken.id).run();
   }
   const sid = randomId(32);
-  // توکن‌های مدیریتی عمر طولانی دارند؛ نشست تا ۳۰ روز می‌ماند یا تا پایان اعتبار توکن (هرکدام زودتر).
-  // توکن اولیه‌ی اضطراری محیط سرور همچنان نشست کوتاه ۸ساعته دارد.
-  const sessionTtl = accessToken
-    ? Math.max(1, Math.min(30 * 86400000, accessToken.expires_at == null ? 30 * 86400000 : accessToken.expires_at - t))
-    : ttlMs(env);
+  // خود توکن می‌تواند اعتبار طولانی‌تری داشته باشد، اما نشست مرورگر کوتاه‌عمر است.
+  // همهٔ روش‌های ورود از سقف تنظیم‌شده (۸ ساعت به‌طور پیش‌فرض) پیروی می‌کنند؛
+  // اگر توکن زودتر منقضی شود، نشست هم بیشتر از آن زنده نمی‌ماند.
+  const configuredSessionTtl = ttlMs(env);
+  const sessionTtl = accessToken && accessToken.expires_at != null
+    ? Math.max(1, Math.min(configuredSessionTtl, accessToken.expires_at - t))
+    : configuredSessionTtl;
   const exp = t + sessionTtl;
   const isBootstrap = !accessToken;
   await db.prepare("INSERT INTO sessions (id_hash, restaurant_id, role, created_at, expires_at, last_seen_at, ip_hash, user_agent, bootstrap, access_token_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")

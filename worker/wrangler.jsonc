@@ -21,7 +21,8 @@
     "PANEL_RESTAURANT_ID": "main",
     // آدرس عمومی سایت مشتریان؛ QR فقط به این آدرس ساخته می‌شود
     "PUBLIC_SITE_URL": "https://hosseinasgari898989-dev.github.io/sepidar-restaurant-platform/",
-    "SESSION_TTL_HOURS": "8"
+    "SESSION_TTL_HOURS": "8",
+    "IMAGEKIT_URL_ENDPOINT": "https://ik.imagekit.io/amup8gp0i"
   },
 
   "d1_databases": [
@@ -32,10 +33,8 @@
     }
   ]
 
-  // ⚠️ توکن اولیه را هرگز اینجا ننویسید. فقط به‌صورت Secret:
-  //   npx wrangler secret put SEPIDAR_PANEL_BOOTSTRAP_TOKEN
+  // ⚠️ کلیدهای محرمانه را هرگز اینجا ننویسید؛ فقط در Secrets ثبت شوند:
+  // npx wrangler secret put SEPIDAR_PANEL_BOOTSTRAP_TOKEN
+  // npx wrangler secret put IMAGEKIT_PRIVATE_KEY
+  // npx wrangler secret put TAVILY_API_KEY
 }
-
-  // R2 storage requires one-time enablement in the Cloudflare Dashboard.
-  // After the bucket is created, enable this binding and deploy:
-  // "r2_buckets": [{ "binding": "FOOD_IMAGES", "bucket_name": "sepidar-food-images" }]

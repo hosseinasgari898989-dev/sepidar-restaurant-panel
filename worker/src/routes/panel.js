@@ -55,6 +55,87 @@ function validImageSignature(bytes, type) {
   return false;
 }
 
+const IMAGE_CONTENT_TYPES = new Set(["image/jpeg", "image/png", "image/webp", "image/avif"]);
+
+// پارس multipart با سقف واقعی بدنه؛ به Content-Length به‌تنهایی اعتماد نمی‌کنیم.
+async function readBoundedFormData(request, maxBytes) {
+  const contentType = request.headers.get("Content-Type") || "";
+  if (!contentType.toLowerCase().startsWith("multipart/form-data")) {
+    throw new ApiError(415, "unsupported_media_type", "عکس باید از طریق فرم بارگذاری ارسال شود.");
+  }
+  if (!request.body) throw new ApiError(400, "invalid_multipart", "محتوای بارگذاری خالی است.");
+  const reader = request.body.getReader();
+  const chunks = [];
+  let total = 0;
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      total += value.byteLength;
+      if (total > maxBytes) {
+        try { await reader.cancel(); } catch {}
+        throw new ApiError(413, "image_too_large", "حجم عکس با احتساب فرم باید حداکثر ۵ مگابایت باشد.");
+      }
+      chunks.push(value);
+    }
+  } catch (err) {
+    if (err instanceof ApiError) throw err;
+    throw new ApiError(400, "invalid_multipart", "خواندن فرم عکس ناموفق بود.");
+  }
+  const body = new Uint8Array(total);
+  let offset = 0;
+  for (const chunk of chunks) { body.set(chunk, offset); offset += chunk.byteLength; }
+  try {
+    return await new Response(body, { headers: { "Content-Type": contentType } }).formData();
+  } catch {
+    throw new ApiError(400, "invalid_multipart", "ساختار فرم بارگذاری عکس معتبر نیست.");
+  }
+}
+
+function imageKitEndpoint(env) {
+  try {
+    const u = new URL(String(env.IMAGEKIT_URL_ENDPOINT || ""));
+    if (u.protocol !== "https:" || u.hostname !== "ik.imagekit.io" || u.username || u.password || u.search || u.hash) return null;
+    const basePath = u.pathname.replace(/\/+$/, "");
+    if (!/^\/[A-Za-z0-9_-]{4,40}$/.test(basePath)) return null;
+    return { origin: u.origin, basePath };
+  } catch { return null; }
+}
+
+function imageKitAssetUrl(env, imageUrl, restaurantId) {
+  if (typeof imageUrl !== "string" || !imageUrl) return null;
+  const endpoint = imageKitEndpoint(env);
+  if (!endpoint) return null;
+  try {
+    const u = new URL(imageUrl);
+    const folderPrefix = endpoint.basePath + "/sepidar/" + encodeURIComponent(String(restaurantId)) + "/";
+    if (u.origin !== endpoint.origin || !u.pathname.startsWith(folderPrefix) || u.hash) return null;
+    const filename = u.pathname.slice(folderPrefix.length);
+    if (!/^[A-Za-z0-9_-]{20,90}\.(?:jpg|png|webp|avif)$/.test(filename)) return null;
+    const params = [...u.searchParams.entries()];
+    if (params.length && !(params.length === 1 && params[0][0] === "updatedAt" && /^\d{1,16}$/.test(params[0][1]))) return null;
+    return u.origin + u.pathname + (params.length ? "?updatedAt=" + encodeURIComponent(params[0][1]) : "");
+  } catch { return null; }
+}
+
+async function requireImageKitPhoto(env, restaurantId, imageUrl) {
+  if (!env.IMAGEKIT_PRIVATE_KEY || !imageKitEndpoint(env)) {
+    throw new ApiError(503, "image_storage_unavailable", "اتصال ImageKit هنوز در Secrets و تنظیمات Worker کامل نشده است.");
+  }
+  const safeUrl = imageKitAssetUrl(env, imageUrl, restaurantId);
+  if (!safeUrl) throw new ApiError(422, "image_required_for_other", "برای دسته «سایر» باید عکس را از همین پنل در ImageKit بارگذاری کنید.");
+  let response;
+  try {
+    response = await fetch(safeUrl, { method: "HEAD", signal: AbortSignal.timeout(10000) });
+  } catch {
+    throw new ApiError(502, "image_storage_unreachable", "بررسی عکس در ImageKit انجام نشد؛ اتصال را بررسی کنید.");
+  }
+  const contentType = (response.headers.get("Content-Type") || "").split(";")[0].toLowerCase();
+  if (!response.ok || !IMAGE_CONTENT_TYPES.has(contentType)) {
+    throw new ApiError(422, "image_required_for_other", "عکس در ImageKit پیدا نشد یا نوع آن معتبر نیست؛ دوباره آن را بارگذاری کنید.");
+  }
+}
+
 // ---------- احراز هویت ----------
 on("POST", "/api/panel/auth/login", null, async ({ request, env }) => {
   const r = await login(request, env);
@@ -146,17 +227,21 @@ on("POST", "/api/panel/orders/:id/status", "orders", async ({ request, env, s, p
 });
 
 // ---------- منو ----------
-// بارگذاری عکس واقعی غذا روی R2؛ فقط کاربران احراز هویت‌شده با مجوز منو.
-on("POST", "/api/panel/menu/images", "menu", async ({ request, env, url, s }) => {
-  if (!env.FOOD_IMAGES) throw new ApiError(503, "image_storage_unavailable", "فضای ذخیره‌سازی عکس (R2) هنوز برای این Worker فعال نشده است.");
+// بارگذاری عکس واقعی غذا به ImageKit؛ فقط کاربران احراز هویت‌شده با مجوز منو.
+on("POST", "/api/panel/menu/images", "menu", async ({ request, env, s }) => {
+  if (!env.IMAGEKIT_PRIVATE_KEY || !imageKitEndpoint(env)) {
+    throw new ApiError(503, "image_storage_unavailable", "ابتدا IMAGEKIT_PRIVATE_KEY را به‌صورت Secret و IMAGEKIT_URL_ENDPOINT را در تنظیمات Worker ثبت کنید.");
+  }
   const policy = { limit: 10, windowMs: 60 * 60 * 1000 };
   const keyHash = await sha256Hex("panel:image-upload:" + s.idHash);
   const key = "panel:image-upload:" + keyHash.slice(0, 36);
   await checkLimit(env.DB, key, policy);
+  // هر تلاش آپلود، از جمله فایل نامعتبر، برای جلوگیری از آزمون مکرر شمرده می‌شود.
+  await hit(env.DB, key, policy);
   const length = Number(request.headers.get("Content-Length") || 0);
   if (length > 5 * 1024 * 1024 + 64 * 1024) throw new ApiError(413, "image_too_large", "حجم هر عکس حداکثر ۵ مگابایت است.");
   if (!(request.headers.get("Content-Type") || "").toLowerCase().startsWith("multipart/form-data")) throw new ApiError(415, "unsupported_media_type", "عکس باید از طریق فرم بارگذاری ارسال شود.");
-  const form = await request.formData();
+  const form = await readBoundedFormData(request, 5 * 1024 * 1024 + 64 * 1024);
   const file = form.get("file");
   if (!file || typeof file.arrayBuffer !== "function" || typeof file.size !== "number") throw new ApiError(422, "image_required", "ابتدا یک فایل عکس انتخاب کنید.");
   if (file.size < 16 || file.size > 5 * 1024 * 1024) throw new ApiError(413, "image_too_large", "حجم عکس باید بین ۱۶ بایت و ۵ مگابایت باشد.");
@@ -165,18 +250,109 @@ on("POST", "/api/panel/menu/images", "menu", async ({ request, env, url, s }) =>
   if (!ext) throw new ApiError(415, "invalid_image_type", "فقط JPEG، PNG، WebP یا AVIF مجاز است؛ SVG و فایل‌های اجرایی پذیرفته نمی‌شوند.");
   const header = new Uint8Array(await file.slice(0, 16).arrayBuffer());
   if (!validImageSignature(header, type)) throw new ApiError(415, "invalid_image_signature", "محتوای فایل با نوع عکس اعلام‌شده سازگار نیست.");
-  await hit(env.DB, key, policy);
-  const objectKey = `${s.restaurantId}/${randomId(18)}.${ext}`;
-  await env.FOOD_IMAGES.put(objectKey, file, {
-    httpMetadata: { contentType: type, cacheControl: "public, max-age=31536000, immutable" },
-    customMetadata: { restaurant_id: s.restaurantId, uploaded_by: s.actor, uploaded_at: String(Date.now()) },
+
+  const fileName = randomId(18) + "." + ext;
+  const uploadForm = new FormData();
+  uploadForm.append("file", new Blob([await file.arrayBuffer()], { type }), fileName);
+  uploadForm.append("fileName", fileName);
+  uploadForm.append("folder", "/sepidar/" + s.restaurantId);
+  uploadForm.append("useUniqueFileName", "false");
+
+  let providerResponse;
+  try {
+    providerResponse = await fetch("https://upload.imagekit.io/api/v1/files/upload", {
+      method: "POST",
+      headers: { Authorization: "Basic " + btoa(env.IMAGEKIT_PRIVATE_KEY + ":") },
+      body: uploadForm,
+      signal: AbortSignal.timeout(20000),
+    });
+  } catch {
+    throw new ApiError(502, "image_provider_unreachable", "ارتباط با ImageKit برقرار نشد؛ چند لحظه بعد دوباره تلاش کنید.");
+  }
+  if (!providerResponse.ok) {
+    console.error("ImageKit upload failed with status", providerResponse.status);
+    throw new ApiError(502, "image_provider_upload_failed", providerResponse.status === 401 || providerResponse.status === 403
+      ? "کلید خصوصی ImageKit معتبر نیست یا دسترسی بارگذاری ندارد؛ Secret را بررسی کنید."
+      : "ImageKit تصویر را نپذیرفت؛ سهمیه، دسترسی و تنظیمات حساب را بررسی کنید.");
+  }
+  let uploaded;
+  try { uploaded = await providerResponse.json(); }
+  catch { throw new ApiError(502, "image_provider_invalid_response", "پاسخ ImageKit قابل خواندن نبود."); }
+
+  const imageUrl = imageKitAssetUrl(env, String(uploaded.url || ""), s.restaurantId);
+  if (!imageUrl) {
+    console.error("ImageKit returned an unexpected asset URL");
+    throw new ApiError(502, "image_provider_invalid_url", "ImageKit نشانی‌ای خارج از مسیر امن سپیدار برگرداند.");
+  }
+  await audit(env.DB, s.restaurantId, s.actor, "menu.image_upload", "image", String(uploaded.fileId || fileName), {
+    provider: "imagekit", type, size: file.size,
   });
-  const imageUrl = url.origin + "/media/" + objectKey.split("/").map(encodeURIComponent).join("/");
-  await audit(env.DB, s.restaurantId, s.actor, "menu.image_upload", "image", objectKey, { type, size: file.size });
-  return json({ ok: true, image_url: imageUrl, key: objectKey, type, size: file.size }, 201);
+  return json({ ok: true, image_url: imageUrl, key: String(uploaded.filePath || fileName), type, size: file.size, provider: "imagekit" }, 201);
 });
 
 on("GET", "/api/panel/menu", "menu", async ({ env, s }) => json({ ok: true, categories: await loadMenu(env.DB, s.restaurantId, { includeInactive: true }) }));
+
+// جستجوی قیمت از منابع وب؛ اعمال قیمت در منو همیشه با تأیید مدیر انجام می‌شود.
+on("POST", "/api/panel/ai-search", "menu", async ({ request, env, s }) => {
+  if (!env.TAVILY_API_KEY) {
+    throw new ApiError(503, "price_search_not_configured", "جستجوی واقعی هنوز کلید سرویس جستجوی وب ندارد. ابتدا TAVILY_API_KEY را در Secrets این Worker ثبت کنید.");
+  }
+  await panelMutationLimit(env, s, "ai-price-search", 20, 60 * 60 * 1000);
+  const b = await readJson(request, 2048);
+  const query = str(b.query, { min: 2, max: 180, field: "عبارت جستجو" });
+  const searchQuery = /قیمت|price|cost/i.test(query) ? query : ("قیمت روز " + query + " ایران تومان");
+  let response;
+  try {
+    response = await fetch("https://api.tavily.com/search", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        api_key: env.TAVILY_API_KEY,
+        query: searchQuery,
+        search_depth: "advanced",
+        topic: "general",
+        max_results: 6,
+        include_answer: true,
+        include_raw_content: false,
+        include_images: false,
+      }),
+      signal: AbortSignal.timeout(12000),
+    });
+  } catch {
+    throw new ApiError(502, "price_search_unreachable", "ارتباط با سرویس جستجوی وب برقرار نشد؛ دوباره تلاش کنید.");
+  }
+  if (!response.ok) {
+    // Never return provider payloads that might echo request metadata or secrets.
+    console.error("price search provider status", response.status);
+    throw new ApiError(502, "price_search_failed", "سرویس جستجوی وب پاسخ معتبر نداد؛ پیکربندی کلید سرویس را بررسی کنید.");
+  }
+  let data;
+  try { data = await response.json(); } catch { throw new ApiError(502, "price_search_invalid_response", "پاسخ جستجوی وب قابل خواندن نبود."); }
+  const candidatePrice = (text) => {
+    const raw = String(text || "");
+    const pattern = /(?:قیمت|مبلغ|تومان|ریال|price)[^\d۰-۹]{0,28}([\d۰-۹][\d۰-۹,٬،. ]{3,})/i;
+    const match = raw.match(pattern);
+    if (!match) return null;
+    const digits = match[1].replace(/[۰-۹]/g, (d) => "۰۱۲۳۴۵۶۷۸۹".indexOf(d)).replace(/[^0-9]/g, "");
+    const n = Number(digits);
+    return Number.isSafeInteger(n) && n >= 1000 && n <= 1000000000 ? n : null;
+  };
+  const results = (Array.isArray(data.results) ? data.results : []).slice(0, 6).map((item) => {
+    const title = String(item.title || "منبع قیمت").slice(0, 180);
+    const url = (() => { try { const u = new URL(item.url); return u.protocol === "https:" ? u.toString() : ""; } catch { return ""; } })();
+    const snippet = String(item.content || "").replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F]/g, "").slice(0, 1000);
+    return { title, url, snippet, published_at: item.published_date || null, candidate_price: candidatePrice(title + " " + snippet) };
+  }).filter((item) => item.url);
+  await audit(env.DB, s.restaurantId, s.actor, "price_search.query", "menu_item", null, { query: searchQuery.slice(0, 120), result_count: results.length });
+  return json({
+    ok: true,
+    query: searchQuery,
+    answer: typeof data.answer === "string" ? data.answer.slice(0, 1600) : "",
+    results,
+    warning: "قیمت‌های وب ممکن است مربوط به وزن، شهر، بسته‌بندی یا تاریخ متفاوت باشند. قبل از اعمال، منبع و جزئیات را بررسی کنید.",
+    fetched_at: Date.now(),
+  });
+});
 
 function catFields(b, partial) {
   const f = {};
@@ -199,6 +375,7 @@ on("POST", "/api/panel/menu/categories", "menu", async ({ request, env, s }) => 
   const id = str(b.id, { max: 32, min: 1, field: "شناسه دسته" }).toLowerCase();
   if (!/^[a-z][a-z0-9-]{1,31}$/.test(id)) throw new ApiError(422, "validation_error", "شناسه دسته باید با حروف لاتین کوچک، عدد یا خط تیره باشد.");
   const f = catFields(b, false);
+  if (f.name === "سایر" && id !== "other") throw new ApiError(409, "reserved_category", "نام «سایر» متعلق به دسته‌ی سیستمی است؛ برای این رفتار از شناسه‌ی other استفاده کنید.");
   const exists = await env.DB.prepare("SELECT 1 FROM categories WHERE restaurant_id = ? AND id = ?").bind(s.restaurantId, id).first();
   if (exists) throw new ApiError(409, "duplicate", "دسته‌ای با این شناسه وجود دارد.");
   const max = await env.DB.prepare("SELECT COALESCE(MAX(sort), -1) m FROM categories WHERE restaurant_id = ?").bind(s.restaurantId).first();
@@ -211,7 +388,12 @@ on("POST", "/api/panel/menu/categories", "menu", async ({ request, env, s }) => 
 on("PATCH", "/api/panel/menu/categories/:id", "menu", async ({ request, env, s, p }) => {
   const b = await readJson(request);
   const f = catFields(b, true);
-  if (p.id === "other" && "name" in f && f.name !== "سایر") throw new ApiError(409, "reserved_category", "نام دسته «سایر» برای رفتار ویژه‌ی محصولات تصویری ثابت است؛ برای نام دیگر «دسته جدید» بسازید.");
+  if (p.id === "other") {
+    if ("name" in f && f.name !== "سایر") throw new ApiError(409, "reserved_category", "نام دسته «سایر» برای رفتار ویژه‌ی محصولات تصویری ثابت است؛ برای نام دیگر «دسته جدید» بسازید.");
+    f.options = "[]";
+    f.removables = "[]";
+    if ("emoji" in f) f.emoji = "📷";
+  }
   const keys = Object.keys(f);
   if (!keys.length) throw new ApiError(422, "validation_error", "تغییری ارسال نشده است.");
   const r = await env.DB.prepare(`UPDATE categories SET ${keys.map((k) => `${k} = ?`).join(", ")}, updated_at = ? WHERE restaurant_id = ? AND id = ?`)
@@ -264,10 +446,16 @@ async function itemFields(env, s, b, partial) {
   return f;
 }
 
-on("POST", "/api/panel/menu/items", "menu", async ({ request, env, s }) => {
+on("POST", "/api/panel/menu/items", "menu", async ({ request, env, s, url }) => {
   const b = await readJson(request);
   const f = await itemFields(env, s, b, false);
-  if (f.category_id === "other" && (!f.image_url || !f.image_url.includes("/media/"))) throw new ApiError(422, "image_required_for_other", "برای دسته «سایر» باید عکس واقعی محصول را با آپلود R2 بارگذاری کنید.");
+  if (f.category_id === "other") {
+    await requireImageKitPhoto(env, s.restaurantId, f.image_url);
+    f.emoji = "📷";
+    f.model_url = null;
+    f.meta = "{}";
+    f.removables = "[]";
+  }
   await restaurantCreateLimit(env, s, "menu-item-create", 50, DAY_MS);
   const id = f.category_id + "-" + randomId(6).toLowerCase().replace(/[^a-z0-9]/g, "x");
   const max = await env.DB.prepare("SELECT COALESCE(MAX(sort), -1) m FROM menu_items WHERE restaurant_id = ? AND category_id = ?").bind(s.restaurantId, f.category_id).first();
@@ -278,14 +466,20 @@ on("POST", "/api/panel/menu/items", "menu", async ({ request, env, s }) => {
   return json({ ok: true, item: itemOut(row) }, 201);
 });
 
-on("PATCH", "/api/panel/menu/items/:id", "menu", async ({ request, env, s, p }) => {
+on("PATCH", "/api/panel/menu/items/:id", "menu", async ({ request, env, s, p, url }) => {
   const b = await readJson(request);
   const before = await env.DB.prepare("SELECT * FROM menu_items WHERE id = ? AND restaurant_id = ? AND archived = 0").bind(p.id, s.restaurantId).first();
   if (!before) throw new ApiError(404, "not_found", "غذا پیدا نشد.");
   const f = await itemFields(env, s, b, true);
   const finalCategoryId = f.category_id || before.category_id;
   const finalImageUrl = Object.prototype.hasOwnProperty.call(f, "image_url") ? f.image_url : before.image_url;
-  if (finalCategoryId === "other" && (!finalImageUrl || !finalImageUrl.includes("/media/"))) throw new ApiError(422, "image_required_for_other", "برای دسته «سایر» باید عکس واقعی محصول را با آپلود R2 بارگذاری کنید.");
+  if (finalCategoryId === "other") {
+    await requireImageKitPhoto(env, s.restaurantId, finalImageUrl);
+    f.emoji = "📷";
+    f.model_url = null;
+    f.meta = "{}";
+    f.removables = "[]";
+  }
   const keys = Object.keys(f);
   if (!keys.length) throw new ApiError(422, "validation_error", "تغییری ارسال نشده است.");
   await env.DB.prepare(`UPDATE menu_items SET ${keys.map((k) => `${k} = ?`).join(", ")}, updated_at = ? WHERE id = ? AND restaurant_id = ?`)
@@ -343,11 +537,24 @@ on("PATCH", "/api/panel/reviews/:id", "reviews", async ({ request, env, s, p }) 
   if ("visibility" in b) f.visibility = oneOf(b.visibility, ["published", "hidden"], "وضعیت انتشار");
   if ("flagged" in b) { f.flagged = bool(b.flagged) ? 1 : 0; f.flag_reason = f.flagged ? str(b.flag_reason, { max: 120, field: "دلیل گزارش" }) || "نامناسب" : null; }
   if ("reply" in b) { f.reply = str(b.reply, { max: 500, field: "پاسخ" }) || null; f.reply_at = f.reply ? Date.now() : null; }
+  if ("featured" in b) {
+    f.featured = bool(b.featured) ? 1 : 0;
+    f.feature_style = f.featured
+      ? oneOf(b.feature_style || "glow", ["glow", "shine", "burst"], "جلوه ویژه")
+      : "glow";
+  } else if ("feature_style" in b) {
+    f.feature_style = oneOf(b.feature_style, ["glow", "shine", "burst"], "جلوه ویژه");
+  }
   const keys = Object.keys(f);
   if (!keys.length) throw new ApiError(422, "validation_error", "تغییری ارسال نشده است.");
   const r = await env.DB.prepare(`UPDATE reviews SET ${keys.map((k) => `${k} = ?`).join(", ")} WHERE id = ? AND restaurant_id = ?`).bind(...keys.map((k) => f[k]), p.id, s.restaurantId).run();
   if (!r.meta.changes) throw new ApiError(404, "not_found", "نظر پیدا نشد.");
-  await audit(env.DB, s.restaurantId, s.actor, "review.update", "review", p.id, { visibility: f.visibility, flagged: f.flagged, replied: "reply" in f ? !!f.reply : undefined });
+  const featureChange = "featured" in f || "feature_style" in f;
+  await audit(env.DB, s.restaurantId, s.actor, featureChange ? "review.feature" : "review.update", "review", p.id, {
+    visibility: f.visibility, flagged: f.flagged,
+    replied: "reply" in f ? !!f.reply : undefined,
+    featured: f.featured, feature_style: f.feature_style,
+  });
   const row = await env.DB.prepare("SELECT * FROM reviews WHERE id = ?").bind(p.id).first();
   return json({ ok: true, review: { ...row, flagged: !!row.flagged } });
 });
@@ -380,6 +587,7 @@ on("DELETE", "/api/panel/reviews/:id/ban", "reviews", async ({ env, s, p }) => {
 on("DELETE", "/api/panel/reviews/:id", "reviews", async ({ env, s, p }) => {
   const review = await env.DB.prepare("SELECT id FROM reviews WHERE id = ? AND restaurant_id = ?").bind(p.id, s.restaurantId).first();
   if (!review) throw new ApiError(404, "not_found", "نظر پیدا نشد.");
+  await env.DB.prepare("DELETE FROM review_votes WHERE review_id = ? AND restaurant_id = ?").bind(p.id, s.restaurantId).run();
   await env.DB.prepare("DELETE FROM reviews WHERE id = ? AND restaurant_id = ?").bind(p.id, s.restaurantId).run();
   await audit(env.DB, s.restaurantId, s.actor, "review.delete", "review", review.id, null);
   return json({ ok: true });
@@ -443,7 +651,22 @@ on("PATCH", "/api/panel/settings", "settings", async ({ request, env, s }) => {
 on("GET", "/api/panel/access-tokens", "platform_settings", async ({ env, s }) => {
   const rows = (await env.DB.prepare("SELECT id, token_prefix, label, role, created_at, expires_at, revoked_at, last_used_at FROM access_tokens WHERE restaurant_id = ? ORDER BY created_at DESC LIMIT 100")
     .bind(s.restaurantId).all()).results;
-  return json({ ok: true, tokens: rows.map((row) => ({ ...row, is_current: row.id === s.accessTokenId })) });
+  // The browser can have an incorrect system clock; return server time so the UI
+  // can show expiry consistently with the server-side authentication checks.
+  const serverTime = Date.now();
+  const asMilliseconds = (value) => value != null && Number(value) > 0 && Number(value) < 100000000000 ? Number(value) * 1000 : value;
+  return json({
+    ok: true,
+    server_time: serverTime,
+    tokens: rows.map((row) => ({
+      ...row,
+      created_at: asMilliseconds(row.created_at),
+      expires_at: asMilliseconds(row.expires_at),
+      revoked_at: asMilliseconds(row.revoked_at),
+      last_used_at: asMilliseconds(row.last_used_at),
+      is_current: row.id === s.accessTokenId,
+    })),
+  });
 });
 
 on("POST", "/api/panel/access-tokens", "platform_settings", async ({ request, env, s }) => {
@@ -472,19 +695,42 @@ on("POST", "/api/panel/access-tokens", "platform_settings", async ({ request, en
   return json({ ok: true, token: { id, token, token_prefix: prefix, label, role, created_at: now, expires_at: expiresAt, revoked_at: null, last_used_at: null, is_current: false } });
 });
 
+on("DELETE", "/api/panel/access-tokens/cleanup", "platform_settings", async ({ env, s }) => {
+  const now = Date.now();
+  const rows = (await env.DB.prepare("SELECT id, label, role, created_at, revoked_at, expires_at FROM access_tokens WHERE restaurant_id = ?")
+    .bind(s.restaurantId).all()).results;
+  const asMilliseconds = (value) => value != null && Number(value) > 0 && Number(value) < 100000000000 ? Number(value) * 1000 : value;
+  // Keep the token that authenticated this session. For bootstrap sessions,
+  // keep the newest currently-valid token so cleanup cannot strand the manager.
+  const active = rows
+    .filter((row) => !row.revoked_at && (row.expires_at == null || asMilliseconds(row.expires_at) > now))
+    .sort((a, b) => Number(b.created_at || 0) - Number(a.created_at || 0));
+  const protectedId = s.accessTokenId || active[0]?.id || null;
+  let deleted = 0;
+  for (const row of rows) {
+    if (row.id === protectedId) continue;
+    await env.DB.prepare("UPDATE sessions SET revoked_at = ? WHERE access_token_id = ? AND revoked_at IS NULL")
+      .bind(now, row.id).run();
+    await env.DB.prepare("DELETE FROM access_tokens WHERE id = ? AND restaurant_id = ?")
+      .bind(row.id, s.restaurantId).run();
+    deleted++;
+  }
+  await audit(env.DB, s.restaurantId, s.actor, "access_token.cleanup", "access_token", protectedId, { deleted, protected_token_kept: Boolean(protectedId) });
+  return json({ ok: true, deleted, protected_token_id: protectedId, active_token_kept: Boolean(protectedId) });
+});
+
 on("DELETE", "/api/panel/access-tokens/:id", "platform_settings", async ({ env, s, p }) => {
   const target = await env.DB.prepare("SELECT id, label, role, revoked_at FROM access_tokens WHERE id = ? AND restaurant_id = ?")
     .bind(p.id, s.restaurantId).first();
   if (!target) throw new ApiError(404, "not_found", "توکن پیدا نشد.");
-  if (s.accessTokenId === target.id) throw new ApiError(409, "current_token", "این توکن برای نشست فعلی استفاده شده؛ ابتدا با توکن دیگری وارد شوید و سپس آن را لغو کنید.");
-  if (target.revoked_at) return json({ ok: true, already_revoked: true });
+  if (s.accessTokenId === target.id) throw new ApiError(409, "current_token", "این توکن برای نشست فعلی استفاده شده؛ ابتدا با توکن دیگری وارد شوید و سپس آن را حذف کنید.");
   const now = Date.now();
-  await env.DB.prepare("UPDATE access_tokens SET revoked_at = ? WHERE id = ? AND restaurant_id = ? AND revoked_at IS NULL")
-    .bind(now, target.id, s.restaurantId).run();
   await env.DB.prepare("UPDATE sessions SET revoked_at = ? WHERE access_token_id = ? AND revoked_at IS NULL")
     .bind(now, target.id).run();
-  await audit(env.DB, s.restaurantId, s.actor, "access_token.revoke", "access_token", target.id, { label: target.label, role: target.role });
-  return json({ ok: true });
+  await env.DB.prepare("DELETE FROM access_tokens WHERE id = ? AND restaurant_id = ?")
+    .bind(target.id, s.restaurantId).run();
+  await audit(env.DB, s.restaurantId, s.actor, "access_token.delete", "access_token", target.id, { label: target.label, role: target.role });
+  return json({ ok: true, deleted: true });
 });
 
 on("GET", "/api/panel/qr", "restaurant", async ({ env, s }) => {
@@ -492,7 +738,7 @@ on("GET", "/api/panel/qr", "restaurant", async ({ env, s }) => {
   if (!base) return json({ ok: true, configured: false, reason: "public_site_url_missing", restaurant_id: s.restaurantId });
   const u = new URL(base);
   u.searchParams.set("r", s.restaurantId);
-  return json({ ok: true, configured: true, restaurant_id: s.restaurantId, target_url: u.toString(), customer_reads_param: false });
+  return json({ ok: true, configured: true, restaurant_id: s.restaurantId, target_url: u.toString(), customer_reads_param: true });
 });
 
 // ---------- گزارش‌ها ----------

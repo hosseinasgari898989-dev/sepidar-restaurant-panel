@@ -45,13 +45,14 @@ export async function handlePublic(request, env, url, headers) {
       { key: "day", limit: 6, windowMs: DAY_MS },
     ];
     await enforceClientLimits(db, "lead", clientHash, limits);
+    // هر تلاش پس از عبور از سهمیه شمرده می‌شود، حتی اگر داده‌ی فرم نامعتبر باشد.
+    await recordClientLimits(db, "lead", clientHash, limits);
     const name = str(b.restaurant_name, { max: 60, min: 2, field: "نام رستوران" });
     const phone = str(b.phone, { max: 20, min: 7, field: "شماره تماس" });
     if (!/^[0-9۰-۹+\-\s]{7,20}$/.test(phone)) throw new ApiError(422, "validation_error", "شماره تماس معتبر نیست.");
     const note = str(b.note, { max: 400, field: "توضیحات" });
     const t = Date.now(), id = randomId(10);
     await db.prepare("INSERT INTO leads (id, restaurant_name, phone, note, status, created_at, updated_at) VALUES (?, ?, ?, ?, 'new', ?, ?)").bind(id, name, phone, note || null, t, t).run();
-    await recordClientLimits(db, "lead", clientHash, limits);
     return json({ ok: true }, 201, { headers });
   }
 
@@ -87,12 +88,60 @@ export async function handlePublic(request, env, url, headers) {
   }
 
   if (method === "GET" && sub === "reviews" && parts.length === 5) {
+    const visitorId = url.searchParams.get("client_id") || "";
+    const clientHash = /^[a-f0-9]{32,64}$/i.test(visitorId)
+      ? await sha256Hex("sepidar-client-v1:" + visitorId.toLowerCase())
+      : null;
     const [rows, sum] = await Promise.all([
-      db.prepare("SELECT id, item_name, rating, comment, author_name, reply, reply_at, created_at FROM reviews WHERE restaurant_id = ? AND visibility = 'published' ORDER BY created_at DESC LIMIT 50").bind(r.id).all(),
+      db.prepare(`SELECT r.id, r.item_name, r.rating, r.comment, r.author_name, r.reply, r.reply_at, r.created_at,
+        COALESCE(r.featured, 0) AS featured, COALESCE(r.feature_style, 'glow') AS feature_style,
+        COALESCE(votes.likes, 0) AS likes, COALESCE(votes.dislikes, 0) AS dislikes,
+        CASE WHEN ? IS NULL THEN NULL ELSE
+          (SELECT rv.vote FROM review_votes rv WHERE rv.restaurant_id = r.restaurant_id AND rv.review_id = r.id AND rv.client_key_hash = ? LIMIT 1)
+        END AS my_vote
+        FROM reviews r
+        LEFT JOIN (
+          SELECT review_id,
+            SUM(CASE WHEN vote = 'like' THEN 1 ELSE 0 END) AS likes,
+            SUM(CASE WHEN vote = 'dislike' THEN 1 ELSE 0 END) AS dislikes
+          FROM review_votes WHERE restaurant_id = ? GROUP BY review_id
+        ) votes ON votes.review_id = r.id
+        WHERE r.restaurant_id = ? AND r.visibility = 'published'
+        ORDER BY r.created_at DESC LIMIT 50`)
+        .bind(clientHash, clientHash, r.id, r.id).all(),
       // میانگین از همه امتیازها محاسبه می‌شود؛ پنهان‌کردن متن نظر، میانگین را دست‌کاری نمی‌کند
       db.prepare("SELECT COUNT(*) n, AVG(rating) avg FROM reviews WHERE restaurant_id = ?").bind(r.id).first(),
     ]);
-    return json({ ok: true, reviews: rows.results, summary: { count: sum.n || 0, avg: sum.n ? Math.round(sum.avg * 10) / 10 : null } }, 200, { headers });
+    return json({ ok: true, reviews: rows.results.map((review) => ({ ...review, featured: !!review.featured })), summary: { count: sum.n || 0, avg: sum.n ? Math.round(sum.avg * 10) / 10 : null } }, 200, { headers });
+  }
+
+  // هر مرورگر برای هر نظر فقط یک واکنش دارد؛ تغییر رأی، مقدار قبلی را جایگزین می‌کند.
+  if (method === "POST" && sub === "reviews" && parts.length === 7 && parts[6] === "vote") {
+    const reviewId = String(parts[5] || "").slice(0, 80);
+    if (!reviewId) throw new ApiError(404, "review_not_found", "نظر پیدا نشد.");
+    const b = await readJson(request, 2048);
+    const clientHash = await clientIdentity(b);
+    const vote = oneOf(b.vote, ["like", "dislike"], "نوع واکنش");
+    const limits = [
+      { key: "hour", limit: 60, windowMs: 60 * 60 * 1000 },
+      { key: "day", limit: 300, windowMs: DAY_MS },
+    ];
+    await enforceClientLimits(db, "review-vote", clientHash, limits);
+    await recordClientLimits(db, "review-vote", clientHash, limits);
+    const review = await db.prepare("SELECT id FROM reviews WHERE id = ? AND restaurant_id = ? AND visibility = 'published'")
+      .bind(reviewId, r.id).first();
+    if (!review) throw new ApiError(404, "review_not_found", "این نظر در دسترس نیست.");
+    const now = Date.now();
+    await db.prepare(`INSERT INTO review_votes (restaurant_id, review_id, client_key_hash, vote, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?)
+      ON CONFLICT(restaurant_id, review_id, client_key_hash)
+      DO UPDATE SET vote = excluded.vote, updated_at = excluded.updated_at`)
+      .bind(r.id, reviewId, clientHash, vote, now, now).run();
+    const totals = await db.prepare(`SELECT
+      COALESCE(SUM(CASE WHEN vote = 'like' THEN 1 ELSE 0 END), 0) AS likes,
+      COALESCE(SUM(CASE WHEN vote = 'dislike' THEN 1 ELSE 0 END), 0) AS dislikes
+      FROM review_votes WHERE restaurant_id = ? AND review_id = ?`).bind(r.id, reviewId).first();
+    return json({ ok: true, likes: totals?.likes || 0, dislikes: totals?.dislikes || 0, my_vote: vote }, 200, { headers });
   }
 
   if (method === "POST" && sub === "reviews" && parts.length === 5) {
@@ -104,6 +153,8 @@ export async function handlePublic(request, env, url, headers) {
       { key: "day", limit: 8, windowMs: DAY_MS },
     ];
     await enforceClientLimits(db, "review", clientHash, limits);
+    // ارسال تکراری یا نامعتبر هم بعد از بررسی سهمیه، در محدودسازی شمرده می‌شود.
+    await recordClientLimits(db, "review", clientHash, limits);
     const rating = int(b.rating, { min: 1, max: 5, field: "امتیاز" });
     let itemName = null, itemId = null;
     if (b.item_id) {
@@ -118,7 +169,6 @@ export async function handlePublic(request, env, url, headers) {
     await db.prepare("INSERT INTO reviews (id, restaurant_id, order_number, item_id, item_name, rating, comment, author_name, client_key_hash, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
       .bind(randomId(10), r.id, b.order_number ? int(b.order_number, { min: 1, max: 1e9, field: "شماره سفارش" }) : null, itemId, itemName, rating,
         str(b.comment, { max: 600, field: "متن نظر" }) || null, str(b.author_name, { max: 40, field: "نام" }) || null, clientHash, t).run();
-    await recordClientLimits(db, "review", clientHash, limits);
     return json({ ok: true }, 201, { headers });
   }
 
@@ -131,12 +181,18 @@ export async function handlePublic(request, env, url, headers) {
       { key: "day", limit: 40, windowMs: DAY_MS },
     ];
     await enforceClientLimits(db, "order", clientHash, limits);
+    // تلاش سفارش پیش از اعتبارسنجی سبد شمرده می‌شود تا ارسال نامعتبر نتواند بی‌هزینه تکرار شود.
+    await recordClientLimits(db, "order", clientHash, limits);
     if (!Array.isArray(b.lines) || !b.lines.length || b.lines.length > 30) throw new ApiError(422, "validation_error", "سبد خرید معتبر نیست.");
     const menu = await loadMenu(db, r.id);
     const lines = b.lines.map((l) => {
       const cat = menu.find((c) => c.items.some((i) => i.id === l.item_id));
       const item = cat && cat.items.find((i) => i.id === l.item_id);
       if (!item) throw new ApiError(422, "item_unavailable", "یکی از غذاهای سبد دیگر در منو نیست.");
+      // Defensive server-side rule: no product in the photo-only category can be ordered without a real image.
+      if (cat.id === "other" && !item.image_url) {
+        throw new ApiError(422, "image_required_for_other", `برای «${item.name}» ابتدا باید عکس واقعی محصول بارگذاری شود.`);
+      }
       if (!item.available) throw new ApiError(422, "item_unavailable", `«${item.name}» در حال حاضر موجود نیست.`);
       const qty = int(l.qty, { min: 1, max: 50, field: "تعداد" });
       // قیمت فقط در سرور و از منوی ذخیره‌شده محاسبه می‌شود؛ قیمت ارسالی مرورگر نادیده گرفته می‌شود
@@ -152,7 +208,6 @@ export async function handlePublic(request, env, url, headers) {
     await db.batch(lines.map((l) => db.prepare("INSERT INTO order_items (order_id, restaurant_id, item_id, category_id, name, emoji, color1, color2, image_url, qty, unit_price, line_total, options, removed, note) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
       .bind(id, r.id, l.item.id, l.cat.id, l.item.name, l.item.emoji, l.cat.colors[0], l.cat.colors[1], l.item.image_url || null, l.qty, l.unit, l.unit * l.qty, JSON.stringify(l.options), JSON.stringify(l.removed), l.note || null)));
     await db.prepare("INSERT INTO order_events (order_id, restaurant_id, from_status, to_status, actor, created_at) VALUES (?, ?, NULL, 'new', 'customer', ?)").bind(id, r.id, t).run();
-    await recordClientLimits(db, "order", clientHash, limits);
     const o = await db.prepare("SELECT number FROM orders WHERE id = ?").bind(id).first();
     await audit(db, r.id, "customer", "order.create", "order", id, { number: o.number, total });
     return json({ ok: true, order: { id, number: o.number, total, status: "new", created_at: t, estimated_ready_at: null, tracking_token: trackingToken } }, 201, { headers });
