@@ -4,8 +4,24 @@ import { checkLimit, hit } from "../lib/ratelimit.js";
 import { str, int, randomId, sha256Hex } from "../lib/util.js";
 import { audit } from "../lib/auth.js";
 
-async function limitKey(request, name) {
-  return `pub:${name}:` + (await sha256Hex("sp-ip:" + (request.headers.get("CF-Connecting-IP") || "unknown"))).slice(0, 32);
+// شناسه‌ی ناشناس و پایدار مرورگر؛ IP در محدودسازی و بن عمومی استفاده/ذخیره نمی‌شود.
+async function clientIdentity(body) {
+  const id = str(body.client_id, { min: 32, max: 64, field: "شناسه ناشناس مرورگر" });
+  if (!/^[a-f0-9]{32,64}$/i.test(id)) throw new ApiError(422, "invalid_client_id", "شناسه مرورگر معتبر نیست؛ صفحه را تازه‌سازی کنید.");
+  return sha256Hex("sepidar-client-v1:" + id.toLowerCase());
+}
+const limitKey = (name, clientHash, window = "") => `pub:${name}:${clientHash.slice(0, 36)}${window ? ":" + window : ""}`;
+async function enforceClientLimits(db, name, clientHash, policies) {
+  for (const policy of policies) await checkLimit(db, limitKey(name, clientHash, policy.key), policy);
+}
+async function recordClientLimits(db, name, clientHash, policies) {
+  for (const policy of policies) await hit(db, limitKey(name, clientHash, policy.key), policy);
+}
+async function assertReviewNotBanned(db, restaurantId, clientHash) {
+  const now = Date.now();
+  const ban = await db.prepare("SELECT reason, expires_at FROM review_bans WHERE restaurant_id = ? AND client_key_hash = ? AND (expires_at IS NULL OR expires_at > ?)")
+    .bind(restaurantId, clientHash, now).first();
+  if (ban) throw new ApiError(403, "review_banned", ban.reason ? `امکان ثبت نظر برای این مرورگر مسدود شده است: ${ban.reason}` : "امکان ثبت نظر از این مرورگر فعلاً مسدود شده است.", { body: { banned: true, expires_at: ban.expires_at || null } });
 }
 async function restaurantOr404(db, id) {
   if (!/^[a-z0-9-]{1,40}$/.test(id)) throw new ApiError(404, "not_found", "رستوران پیدا نشد.");
@@ -22,17 +38,20 @@ export async function handlePublic(request, env, url, headers) {
   const parts = url.pathname.split("/").filter(Boolean); // api, public, ...
 
   if (method === "POST" && parts.length === 3 && parts[2] === "leads") {
-    const key = await limitKey(request, "lead");
-    const lim = { limit: 3, windowMs: 60 * 60 * 1000 };
-    await checkLimit(db, key, lim);
     const b = await readJson(request, 4096);
+    const clientHash = await clientIdentity(b);
+    const limits = [
+      { key: "hour", limit: 3, windowMs: 60 * 60 * 1000 },
+      { key: "day", limit: 6, windowMs: DAY_MS },
+    ];
+    await enforceClientLimits(db, "lead", clientHash, limits);
     const name = str(b.restaurant_name, { max: 60, min: 2, field: "نام رستوران" });
     const phone = str(b.phone, { max: 20, min: 7, field: "شماره تماس" });
     if (!/^[0-9۰-۹+\-\s]{7,20}$/.test(phone)) throw new ApiError(422, "validation_error", "شماره تماس معتبر نیست.");
     const note = str(b.note, { max: 400, field: "توضیحات" });
     const t = Date.now(), id = randomId(10);
     await db.prepare("INSERT INTO leads (id, restaurant_name, phone, note, status, created_at, updated_at) VALUES (?, ?, ?, ?, 'new', ?, ?)").bind(id, name, phone, note || null, t, t).run();
-    await hit(db, key, lim);
+    await recordClientLimits(db, "lead", clientHash, limits);
     return json({ ok: true }, 201, { headers });
   }
 
@@ -77,10 +96,14 @@ export async function handlePublic(request, env, url, headers) {
   }
 
   if (method === "POST" && sub === "reviews" && parts.length === 5) {
-    const key = await limitKey(request, "review");
-    const lim = { limit: 5, windowMs: 60 * 60 * 1000 };
-    await checkLimit(db, key, lim);
     const b = await readJson(request, 4096);
+    const clientHash = await clientIdentity(b);
+    await assertReviewNotBanned(db, r.id, clientHash);
+    const limits = [
+      { key: "hour", limit: 3, windowMs: 60 * 60 * 1000 },
+      { key: "day", limit: 8, windowMs: DAY_MS },
+    ];
+    await enforceClientLimits(db, "review", clientHash, limits);
     const rating = int(b.rating, { min: 1, max: 5, field: "امتیاز" });
     let itemName = null, itemId = null;
     if (b.item_id) {
@@ -88,19 +111,26 @@ export async function handlePublic(request, env, url, headers) {
       if (it) { itemId = it.id; itemName = it.name; }
     }
     const t = Date.now();
-    await db.prepare("INSERT INTO reviews (id, restaurant_id, order_number, item_id, item_name, rating, comment, author_name, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)")
+    // چند ارسال تکراری در چند ثانیه‌ی متوالی معمولاً اسپم است.
+    const recent = await db.prepare("SELECT 1 FROM reviews WHERE restaurant_id = ? AND client_key_hash = ? AND created_at > ? LIMIT 1")
+      .bind(r.id, clientHash, t - 30 * 1000).first();
+    if (recent) throw new ApiError(429, "review_duplicate", "نظر تازه‌ای همین چند لحظه پیش ثبت شده است؛ کمی صبر کنید.");
+    await db.prepare("INSERT INTO reviews (id, restaurant_id, order_number, item_id, item_name, rating, comment, author_name, client_key_hash, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
       .bind(randomId(10), r.id, b.order_number ? int(b.order_number, { min: 1, max: 1e9, field: "شماره سفارش" }) : null, itemId, itemName, rating,
-        str(b.comment, { max: 600, field: "متن نظر" }) || null, str(b.author_name, { max: 40, field: "نام" }) || null, t).run();
-    await hit(db, key, lim);
+        str(b.comment, { max: 600, field: "متن نظر" }) || null, str(b.author_name, { max: 40, field: "نام" }) || null, clientHash, t).run();
+    await recordClientLimits(db, "review", clientHash, limits);
     return json({ ok: true }, 201, { headers });
   }
 
   if (method === "POST" && sub === "orders" && parts.length === 5) {
     if (r.status !== "open" || !r.accepting_orders) throw new ApiError(409, "not_accepting", "رستوران در حال حاضر سفارش نمی‌پذیرد.");
-    const key = await limitKey(request, "order");
-    const lim = { limit: 20, windowMs: 10 * 60 * 1000 };
-    await checkLimit(db, key, lim);
     const b = await readJson(request, 24 * 1024);
+    const clientHash = await clientIdentity(b);
+    const limits = [
+      { key: "ten-minutes", limit: 10, windowMs: 10 * 60 * 1000 },
+      { key: "day", limit: 40, windowMs: DAY_MS },
+    ];
+    await enforceClientLimits(db, "order", clientHash, limits);
     if (!Array.isArray(b.lines) || !b.lines.length || b.lines.length > 30) throw new ApiError(422, "validation_error", "سبد خرید معتبر نیست.");
     const menu = await loadMenu(db, r.id);
     const lines = b.lines.map((l) => {
@@ -122,7 +152,7 @@ export async function handlePublic(request, env, url, headers) {
     await db.batch(lines.map((l) => db.prepare("INSERT INTO order_items (order_id, restaurant_id, item_id, category_id, name, emoji, color1, color2, image_url, qty, unit_price, line_total, options, removed, note) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
       .bind(id, r.id, l.item.id, l.cat.id, l.item.name, l.item.emoji, l.cat.colors[0], l.cat.colors[1], l.item.image_url || null, l.qty, l.unit, l.unit * l.qty, JSON.stringify(l.options), JSON.stringify(l.removed), l.note || null)));
     await db.prepare("INSERT INTO order_events (order_id, restaurant_id, from_status, to_status, actor, created_at) VALUES (?, ?, NULL, 'new', 'customer', ?)").bind(id, r.id, t).run();
-    await hit(db, key, lim);
+    await recordClientLimits(db, "order", clientHash, limits);
     const o = await db.prepare("SELECT number FROM orders WHERE id = ?").bind(id).first();
     await audit(db, r.id, "customer", "order.create", "order", id, { number: o.number, total });
     return json({ ok: true, order: { id, number: o.number, total, status: "new", created_at: t, estimated_ready_at: null, tracking_token: trackingToken } }, 201, { headers });
