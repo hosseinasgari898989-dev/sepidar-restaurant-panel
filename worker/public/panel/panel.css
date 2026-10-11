@@ -567,3 +567,120 @@ body[data-theme="dark"] .note-box.warn{background:var(--warn-bg)!important;color
   .view-h h2{font-size:21px}
 }
 
+
+/* ===== Dark-mode completeness audit: mobile nav, modals, alerts and order editor ===== */
+body[data-theme="dark"] .bnav,
+body[data-theme="dark"] .actbar,
+body[data-theme="dark"] .sh,
+body[data-theme="dark"] .urlbox,
+body[data-theme="dark"] .seg,
+body[data-theme="dark"] .od-meta div,
+body[data-theme="dark"] .srv,
+body[data-theme="dark"] .note-box,
+body[data-theme="dark"] .more-nav a,
+body[data-theme="dark"] .nav .nb,
+body[data-theme="dark"] .nav a.on,
+body[data-theme="dark"] .login-form,
+body[data-theme="dark"] .login-box,
+body[data-theme="dark"] .appearance-menu,
+body[data-theme="dark"] .appearance-options button,
+body[data-theme="dark"] .appearance-colors button {
+  background:var(--card)!important;
+  color:var(--fg)!important;
+  border-color:var(--line)!important;
+}
+body[data-theme="dark"] .bnav {
+  background:color-mix(in srgb,var(--card) 96%,transparent)!important;
+  border-top:1px solid var(--line)!important;
+  box-shadow:0 -12px 34px #0005!important;
+  backdrop-filter:blur(16px) saturate(1.15);
+}
+body[data-theme="dark"] .bnav a,
+body[data-theme="dark"] .bnav button {color:var(--mut)!important}
+body[data-theme="dark"] .bnav .on {color:var(--or-ink)!important}
+body[data-theme="dark"] .bnav .on .ni {background:var(--soft)!important;color:var(--or-ink)!important}
+body[data-theme="dark"] .bnav .nb {background:var(--or)!important;color:#15121a!important;border-color:var(--line)!important}
+body[data-theme="dark"] .actbar {
+  background:color-mix(in srgb,var(--card) 97%,transparent)!important;
+  border-top-color:var(--line)!important;
+  box-shadow:0 -8px 22px #0002;
+}
+body[data-theme="dark"] .sh {
+  background:var(--card)!important;color:var(--fg)!important;
+  border:1px solid var(--line)!important;box-shadow:0 28px 80px #0008!important;
+}
+body[data-theme="dark"] .sh .card,
+body[data-theme="dark"] .sh .stat,
+body[data-theme="dark"] .sh .optg,
+body[data-theme="dark"] .sh .optrow,
+body[data-theme="dark"] .sh .urlbox,
+body[data-theme="dark"] .sh .od-meta div {
+  background:var(--bg)!important;color:var(--fg)!important;border-color:var(--line)!important;
+}
+body[data-theme="dark"] .sh input,
+body[data-theme="dark"] .sh textarea,
+body[data-theme="dark"] .sh select,
+body[data-theme="dark"] .inp,
+body[data-theme="dark"] .fld input,
+body[data-theme="dark"] .fld textarea,
+body[data-theme="dark"] .fld select,
+body[data-theme="dark"] .search input,
+body[data-theme="dark"] .optrow input,
+body[data-theme="dark"] .optg input,
+body[data-theme="dark"] .optg select {
+  background:var(--bg)!important;color:var(--fg)!important;border-color:var(--line)!important;
+  color-scheme:dark;caret-color:var(--or);
+}
+body[data-theme="dark"] input::placeholder,
+body[data-theme="dark"] textarea::placeholder,
+body[data-theme="dark"] .search input::placeholder {color:var(--mut)!important;opacity:1}
+body[data-theme="dark"] .note-box.warn,
+body[data-theme="dark"] .srv.warn,
+body[data-theme="dark"] .demo-bar {
+  background:var(--warn-bg)!important;
+  color:var(--warn)!important;
+  border-color:var(--line)!important;
+}
+body[data-theme="dark"] .tg.def,
+body[data-theme="dark"] .col,
+body[data-theme="dark"] .actbar,
+body[data-theme="dark"] .srv,
+body[data-theme="dark"] .od-meta div {background:var(--soft)!important;color:var(--fg)!important}
+body[data-theme="dark"] .tg.ok,
+body[data-theme="dark"] .status.ok,
+body[data-theme="dark"] .pill.ok {background:#17382b!important;color:#a6f0c2!important;border-color:#2b6046!important}
+body[data-theme="dark"] .tg.bad,
+body[data-theme="dark"] .status.bad,
+body[data-theme="dark"] .pill.bad {background:#3b2229!important;color:#ffc0c8!important;border-color:#71404a!important}
+body[data-theme="dark"] .toast {
+  background:var(--card)!important;color:var(--fg)!important;
+  border:1px solid var(--line)!important;box-shadow:0 15px 40px #0006!important;
+}
+body[data-theme="dark"] .toast.t-err {
+  background:#3b2229!important;color:#ffc0c8!important;border-color:#71404a!important;
+}
+body[data-theme="dark"] .toast.t-info {
+  background:var(--soft)!important;color:var(--fg)!important;border-color:var(--line)!important;
+}
+body[data-theme="dark"] .btn.ghost,
+body[data-theme="dark"] .icon-btn,
+body[data-theme="dark"] .chip,
+body[data-theme="dark"] .cpill,
+body[data-theme="dark"] .seg,
+body[data-theme="dark"] .optg,
+body[data-theme="dark"] .optrow,
+body[data-theme="dark"] .urlbox {
+  background:var(--card)!important;color:var(--fg)!important;border-color:var(--line)!important;
+}
+body[data-theme="dark"] .btn.ghost:hover,
+body[data-theme="dark"] .chip.on,
+body[data-theme="dark"] .nav a.on {
+  background:var(--soft)!important;color:var(--or-ink)!important;border-color:var(--or)!important;
+}
+body[data-theme="dark"] .nav .nb {background:var(--soft)!important;color:var(--or-ink)!important}
+body[data-theme="dark"] .top {background:color-mix(in srgb,var(--card) 94%,transparent)!important}
+body[data-theme="dark"] .demo-bar {background:var(--warn-bg)!important;color:var(--warn)!important}
+body[data-theme="dark"] .login-art .mark {background:var(--card)!important;color:var(--or)!important}
+body[data-theme="dark"] .skel {background:linear-gradient(90deg,var(--soft) 25%,var(--card) 50%,var(--soft) 75%)!important;background-size:200% 100%}
+body[data-theme="dark"] .appearance-menu p {color:var(--mut)!important}
+
