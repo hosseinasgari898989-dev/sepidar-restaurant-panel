@@ -30,12 +30,13 @@
       "database_name": "sepidar-db",
       "database_id": "3ba9f865-95b7-4a5a-b8f6-c256601f1b3a"
     }
+  ],
+  // این binding پس از فعال‌شدن R2 و ساخت باکت sepidar-food-images آمادهٔ استفاده است.
+  "r2_buckets": [
+    { "binding": "FOOD_IMAGES", "bucket_name": "sepidar-food-images" }
   ]
 
-  // ⚠️ توکن اولیه را هرگز اینجا ننویسید. فقط به‌صورت Secret:
-  //   npx wrangler secret put SEPIDAR_PANEL_BOOTSTRAP_TOKEN
+  // ⚠️ توکن‌های محرمانه را در این فایل ننویسید؛ فقط در Secrets ثبت شوند:
+  // npx wrangler secret put SEPIDAR_PANEL_BOOTSTRAP_TOKEN
+  // npx wrangler secret put TAVILY_API_KEY
 }
-
-  // R2 storage requires one-time enablement in the Cloudflare Dashboard.
-  // After the bucket is created, enable this binding and deploy:
-  // "r2_buckets": [{ "binding": "FOOD_IMAGES", "bucket_name": "sepidar-food-images" }]
