@@ -5,11 +5,25 @@ const parsePrice = (v) => { const n = Number(toEnDigits(String(v)).replace(/[,\s
 export default {
   id: "menu", title: "منو و غذاها", short: "منو", icon: "🍔", perm: "menu",
   render(el, ctx) {
-    let cats = [], cat = "all", q = "";
+    let cats = [], cat = "all", q = "", selectedPriceItemId = "", lastPriceSearchItemId = "";
     el.innerHTML = html`
       <div class="view-h"><div><h2>مدیریت منو</h2><p>یک منوی مشترک: همان چیزی که مشتری در سایت سفارش می‌بیند</p></div>
         <div class="tools"><button class="btn ghost" data-newcat>🗂️ دسته جدید</button><button class="btn" data-new>＋ غذای جدید</button></div></div>
-      <div class="note-box">ℹ️ <span>تغییرات پس از ذخیره موفق در سرور، از مسیر عمومی منو برای سایت مشتریان قابل دریافت‌اند. ${ctx.capability("image_upload") && !ctx.demo ? "" : "ImageKit هنوز فعال نشده؛ در دسته‌های عادی می‌توان آدرس HTTPS عکس را وارد کرد، اما دسته «سایر» تا اتصال ImageKit فقط در حالت نمایشی قابل پیش‌نمایش است."}</span></div>
+      <div class="note-box">ℹ️ <span>تغییرات پس از ذخیره موفق در سرور، از مسیر عمومی منو برای سایت مشتریان قابل دریافت‌اند. ${ctx.capability("image_upload") && !ctx.demo ? "آپلود تصاویر از طریق ImageKit انجام می‌شود." : "برای آپلود واقعی تصویر، اتصال ImageKit در Worker باید فعال باشد."}</span></div>
+      <section class="price-search-workspace" aria-labelledby="priceSearchHeading">
+        <div class="price-search-workspace-head">
+          <div><h3 id="priceSearchHeading">🔎 جستجوی قیمت روز</h3><p>یک غذای ثبت‌شده را انتخاب کن تا قیمت منوی رستوران‌های دیگر را در منابع وب بررسی کنیم.</p></div>
+          <span class="price-search-plan">جستجوی وب · Tavily</span>
+        </div>
+        <div class="price-search-controls">
+          <label class="fld price-search-product"><span>غذای ثبت‌شده در سپیدار</span><select id="priceSearchItem"><option value="">در حال بارگذاری منو…</option></select><small id="priceSearchCurrentPrice" class="mut"></small></label>
+          <label class="fld price-search-region"><span>شهر یا منطقه</span><input id="priceSearchRegion" value="ایران" maxlength="80" placeholder="مثلاً تهران یا قم"></label>
+          <button type="button" class="btn" id="priceSearchRun" disabled>🔎 جستجوی قیمت</button>
+        </div>
+        <p class="price-search-hint">نتایج قدیمی و نامرتبط فیلتر می‌شوند. قیمت پیشنهادی فقط وقتی واحد پول مشخص باشد نشان داده می‌شود؛ هیچ قیمتی بدون تأیید تو ذخیره نمی‌شود.</p>
+        <div id="priceSearchResults" aria-live="polite"></div>
+      </section>
+      <div class="tools menu-search-tools" style="margin-bottom:10px"><label class="search"><span class="sr">جستجوی غذا</span><input id="q" type="search" placeholder="جستجوی غذا در منوی خودت…" maxlength="60"></label></div>
       <div class="tools" style="margin-bottom:10px"><label class="search"><span class="sr">جستجوی غذا</span><input id="q" type="search" placeholder="جستجوی غذا…" maxlength="60"></label></div>
       <div class="chips" id="cf"></div>
       <div id="mn">${skeleton(3, 180)}</div>`.s;
@@ -19,7 +33,23 @@ export default {
       try { cats = (await ctx.api.menu()).categories; draw(); }
       catch (err) { mn.innerHTML = errorBox(err).s; }
     }
+    function drawPricePicker() {
+      const select = el.querySelector("#priceSearchItem");
+      if (!select) return;
+      const allItems = cats.flatMap((category) => category.items.map((item) => ({ category, item })));
+      if (!allItems.some(({ item }) => item.id === selectedPriceItemId)) selectedPriceItemId = allItems[0]?.item.id || "";
+      select.innerHTML = [
+        html`<option value="">غذای موردنظر را انتخاب کن…</option>`.s,
+        ...allItems.map(({ category, item }) => html`<option value="${item.id}" ${item.id === selectedPriceItemId ? "selected" : ""}>${category.name} · ${item.name} — ${money(item.price)} تومان</option>`.s),
+      ].join("");
+      select.value = selectedPriceItemId;
+      select.disabled = allItems.length === 0;
+      el.querySelector("#priceSearchRun").disabled = allItems.length === 0;
+      const current = allItems.find(({ item }) => item.id === selectedPriceItemId)?.item;
+      el.querySelector("#priceSearchCurrentPrice").textContent = current ? `قیمت فعلی در سپیدار: ${money(current.price)} تومان` : "برای جستجو ابتدا یک غذا به منو اضافه کن.";
+    }
     function draw() {
+      drawPricePicker();
       el.querySelector("#cf").innerHTML = [{ id: "all", name: "همه", emoji: "✨", items: cats.flatMap((c) => c.items) }, ...cats].map((c) => html`<button class="chip ${c.id === cat ? "on" : ""}" data-c="${c.id}">${c.emoji} ${c.name}<span class="ct num">${F(c.items.length)}</span></button>`.s).join("");
       const shown = cats.filter((c) => cat === "all" || c.id === cat);
       let out = "";
@@ -64,6 +94,59 @@ export default {
       if (e.target.closest("[data-newcat]")) return catEditor(ctx, null, load);
       if (e.target.closest("[data-retry]")) load();
     };
+    const priceSearchItem = el.querySelector("#priceSearchItem");
+    const priceSearchRegion = el.querySelector("#priceSearchRegion");
+    const priceSearchRun = el.querySelector("#priceSearchRun");
+    const priceSearchResults = el.querySelector("#priceSearchResults");
+    priceSearchItem.onchange = () => { selectedPriceItemId = priceSearchItem.value; drawPricePicker(); };
+    priceSearchRun.onclick = async () => {
+      const selected = cats.flatMap((category) => category.items.map((item) => ({ category, item }))).find(({ item }) => item.id === priceSearchItem.value);
+      if (!selected) { priceSearchResults.innerHTML = html`<div class="note-box warn">ابتدا یکی از غذاهای ثبت‌شده را انتخاب کن.</div>`.s; return; }
+      if (ctx.demo) { priceSearchResults.innerHTML = html`<div class="note-box warn">در حالت نمایشی، جستجوی زنده فعال نیست.</div>`.s; return; }
+      selectedPriceItemId = selected.item.id;
+      lastPriceSearchItemId = selected.item.id;
+      const region = String(priceSearchRegion.value || "").trim() || "ایران";
+      busy(priceSearchRun, async () => {
+        priceSearchResults.innerHTML = html`<div class="price-search-loading">🔎 در حال جستجوی «${selected.item.name}» در منابع تازهٔ وب…</div>`.s;
+        try {
+          const result = await ctx.api.searchPrices({ item_id: selected.item.id, region });
+          const results = Array.isArray(result.results) ? result.results : [];
+          priceSearchResults.innerHTML = html`
+            <div class="price-search-summary">
+              <b>نتیجه برای «${result.target_item?.name || selected.item.name}»</b>
+              <span>قیمت فعلی سپیدار: ${money(result.target_item?.current_price ?? selected.item.price)} تومان</span>
+              <small>عبارت جستجو: <span dir="auto">${result.query || selected.item.name}</span></small>
+            </div>
+            <div class="price-search-warning">${result.warning || "منبع، شهر، تاریخ و واحد پول را پیش از هر تغییری بررسی کن."}</div>
+            ${results.length ? results.map((source) => html`<article class="price-search-result" data-source-title="${source.title}">
+              <a href="${source.url}" target="_blank" rel="noopener noreferrer">${source.title || "منبع قیمت"} ↗</a>
+              <small>${source.published_at ? "تاریخ منبع: " + new Date(source.published_at).toLocaleDateString("fa-IR") : "تاریخ انتشار مشخص نیست"}</small>
+              <p>${source.snippet || "برای جزئیات، منبع را باز کن."}</p>
+              <div class="price-search-apply">
+                ${source.candidate_price ? html`<strong>${money(source.candidate_price)} تومان</strong><button type="button" class="btn sm" data-apply-price="${source.candidate_price}" data-apply-item="${selected.item.id}">اعمال به این غذا</button>` : html`<span class="mut price-search-no-price">قیمت قابل‌اعتماد با واحد مشخص از این منبع استخراج نشد.</span>`}
+              </div>
+            </article>`).join("") : html`<div class="price-search-empty"><b>منبع مرتبط و به‌روز پیدا نشد.</b><p>این بهتر از نمایش قیمت نامرتبط است. نام دقیق‌تر، شهر دیگری یا غذای مشابهی را انتخاب کن.</p></div>`}
+            <small class="mut price-search-time">زمان جستجو: ${new Date(result.fetched_at || Date.now()).toLocaleString("fa-IR", { timeZone: "Asia/Tehran", hour: "2-digit", minute: "2-digit" })}</small>
+          `.s;
+        } catch (err) {
+          priceSearchResults.innerHTML = html`<div class="note-box warn"><b>جستجو انجام نشد</b><span>${err.message || "خطای دریافت قیمت"}؛ اتصال و سهمیهٔ سرویس جستجو را بررسی کن.</span></div>`.s;
+        }
+      });
+    };
+    priceSearchResults.onclick = async (event) => {
+      const button = event.target.closest("[data-apply-price]");
+      if (!button) return;
+      const itemId = button.dataset.applyItem;
+      const current = cats.flatMap((category) => category.items).find((item) => item.id === itemId);
+      const price = Number(button.dataset.applyPrice);
+      if (!current || itemId !== lastPriceSearchItemId || !Number.isSafeInteger(price) || price < 1000) { toast("این پیشنهاد دیگر معتبر نیست؛ دوباره جستجو کن.", "err"); return; }
+      const source = button.closest("[data-source-title]")?.dataset.sourceTitle || "منبع وب";
+      if (!(await confirmBox({ title: "اعمال قیمت پیشنهادی؟", text: `قیمت ${money(price)} تومان از «${source}» برای «${current.name}» جایگزین قیمت فعلی ${money(current.price)} تومان شود؟ قبل از تأیید، واحد و جزئیات منبع را بررسی کن.`, ok: "اعمال قیمت", danger: false }))) return;
+      busy(button, async () => {
+        try { await ctx.api.updateItem(current.id, { price }); current.price = price; draw(); toast(`قیمت «${current.name}» به‌روزرسانی شد.`); }
+        catch (err) { toast(err.message || "ذخیرهٔ قیمت ناموفق بود.", "err"); }
+      });
+    };
     let tm;
     el.querySelector("#q").oninput = (e) => { clearTimeout(tm); tm = setTimeout(() => { q = e.target.value.trim(); draw(); }, 150); };
     load();
@@ -94,14 +177,6 @@ function itemEditor(ctx, cats, item, onSaved, catId) {
         <label class="fld"><span>نام غذا</span><input name="name" value="${it.name}" maxlength="60" required></label>
         <label class="fld"><span>دسته</span><select name="category_id">${cats.map((x) => html`<option value="${x.id}" ${x.id === c.id ? "selected" : ""}>${x.emoji} ${x.name}${x.id === "other" ? " · فقط عکس واقعی" : ""}</option>`)}</select></label>
         <label class="fld"><span>قیمت پایه <small>(تومان)</small></span><input name="price" value="${it.price === "" ? "" : F(it.price).replace(/٬/g, "")}" inputmode="numeric" required></label>
-        <div class="full price-search-panel">
-          <div class="price-search-fields">
-            <label class="fld"><span>جستجوی قیمت روز در وب</span><input id="priceSearchQuery" value="${it.name ? `قیمت روز ${it.name} ایران تومان` : ""}" maxlength="180" placeholder="مثلاً قیمت روز مرغ تازه در تهران"></label>
-            <button type="button" class="btn soft" id="searchPrice">🔎 جستجوی قیمت روز</button>
-          </div>
-          <p class="mut price-search-hint">قیمت‌ها همراه با منبع نمایش داده می‌شوند. قیمت را بررسی کن و فقط در صورت تأیید خودت وارد فیلد کن.</p>
-          <div id="priceSearchResults" aria-live="polite"></div>
-        </div>
         ${c.id !== "other" ? html`<label class="fld"><span>ایموجی / نماد غذا</span><input name="emoji" value="${it.emoji}" maxlength="8"></label>` : html`<div class="note-box warn full">📷 دسته «سایر» فقط عکس واقعی می‌پذیرد؛ مدل سه‌بعدی، ایموجی و شخصی‌سازی برای این دسته خاموش است.</div>`}
         <label class="fld full"><span>توضیحات</span><input name="description" value="${it.description}" maxlength="200"></label>
         <label class="fld full"><span>آدرس عکس <small>(بعد از آپلود در ImageKit خودکار پر می‌شود)</small></span><input name="image_url" value="${it.image_url}" maxlength="500" inputmode="url" dir="ltr" placeholder="https://ik.imagekit.io/amup8gp0i/sepidar/main/…"></label>
@@ -121,48 +196,6 @@ function itemEditor(ctx, cats, item, onSaved, catId) {
     const f = s.body.querySelector("#f");
     const uploadButton = s.body.querySelector("#uploadImage");
     const uploadHelp = s.body.querySelector("#imageUploadHelp");
-    const priceSearchButton = s.body.querySelector("#searchPrice");
-    const priceSearchQuery = s.body.querySelector("#priceSearchQuery");
-    const priceSearchResults = s.body.querySelector("#priceSearchResults");
-    priceSearchResults.onclick = (event) => {
-      const apply = event.target.closest("[data-use-price]");
-      if (!apply) return;
-      f.price.value = apply.dataset.usePrice;
-      sync();
-      toast("قیمت پیشنهادی وارد شد؛ برای ثبت، «ذخیره تغییرات» را بزن.");
-    };
-    priceSearchButton.onclick = async () => {
-      const query = String(priceSearchQuery.value || "").trim();
-      if (query.length < 2) {
-        priceSearchResults.innerHTML = html`<div class="note-box warn">نام غذا یا مادهٔ اولیه را وارد کن.</div>`.s;
-        return;
-      }
-      if (ctx.demo) {
-        priceSearchResults.innerHTML = html`<div class="note-box warn">جستجوی واقعی در حالت نمایشی غیرفعال است.</div>`.s;
-        return;
-      }
-      busy(priceSearchButton, async () => {
-        priceSearchResults.innerHTML = html`<div class="price-search-loading">🔎 در حال جستجو در منابع وب…</div>`.s;
-        try {
-          const result = await ctx.api.searchPrices(query);
-          priceSearchResults.innerHTML = html`
-            ${result.answer ? html`<div class="price-search-answer"><b>خلاصهٔ جستجو</b><p>${result.answer}</p></div>` : ""}
-            <div class="price-search-warning">${result.warning || "پیش از اعمال، قیمت و جزئیات منبع را بررسی کن."}</div>
-            ${result.results?.length ? result.results.map((item) => html`<article class="price-search-result">
-              <a href="${item.url}" target="_blank" rel="noopener noreferrer">${item.title || "منبع قیمت"} ↗</a>
-              ${item.published_at ? html`<small>تاریخ منبع: ${item.published_at}</small>` : ""}
-              <p>${item.snippet || "برای دیدن جزئیات، منبع را باز کن."}</p>
-              ${item.candidate_price ? html`<div class="price-search-apply"><strong>${money(item.candidate_price)} تومان</strong><button type="button" class="btn sm ghost" data-use-price="${item.candidate_price}">واردکردن قیمت</button></div>` : ""}
-            </article>`).join("") : html`<div class="note-box">منبع قابل‌استنادی پیدا نشد؛ عبارت جستجو را دقیق‌تر کن.</div>`}
-            <small class="mut price-search-time">آخرین جستجو: ${new Date(result.fetched_at || Date.now()).toLocaleString("fa-IR", { timeZone: "Asia/Tehran", hour: "2-digit", minute: "2-digit" })}</small>
-          `.s;
-        } catch (err) {
-          priceSearchResults.innerHTML = err.code === "price_search_not_configured"
-            ? html`<div class="note-box warn"><b>اتصال جستجوی وب کامل نیست</b><span>برای فعال‌شدن جستجوی زنده، Secret با نام <code>TAVILY_API_KEY</code> باید در Cloudflare Worker ثبت شود.</span></div>`.s
-            : html`<div class="note-box warn"><b>جستجو انجام نشد</b><span>${err.message || "خطای دریافت قیمت"}؛ کمی بعد دوباره تلاش کن.</span></div>`.s;
-        }
-      });
-    };
     uploadHelp.textContent = ctx.demo ? "حالت نمایشی: عکس فقط پیش‌نمایش محلی است و در سرور ذخیره نمی‌شود." : ctx.capability("image_upload") ? "پس از آپلود، عکس در ImageKit ذخیره و در منوی مشترک مشتری/مدیریت نمایش داده می‌شود." : "ImageKit هنوز در Cloudflare فعال نشده؛ آپلود واقعی تا زمان اتصال فضای ذخیره‌سازی در دسترس نیست.";
     if (!ctx.demo && !ctx.capability("image_upload")) uploadButton.disabled = true;
     const sync = () => {
