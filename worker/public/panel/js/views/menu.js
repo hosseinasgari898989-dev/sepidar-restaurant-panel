@@ -183,20 +183,22 @@ function catEditor(ctx, cat, onSaved) {
       <div class="preview-card">${tile(c.emoji, c.colors, { size: "lg" })}<div><b>${c.name || "نام دسته"}</b><div class="mut" style="font-size:13px">گزینه‌ها و مواد قابل حذف این دسته، دقیقاً همان‌هایی‌اند که مشتری در پنجره شخصی‌سازی می‌بیند.</div></div></div>
       <div class="form-grid">
         ${isNew ? html`<label class="fld"><span>شناسه لاتین <small>(مثل pasta)</small></span><input name="id" value="${c.id}" dir="ltr" maxlength="32" pattern="[a-z][a-z0-9-]+"></label>` : html`<input type="hidden" name="id" value="${c.id}">`}
-        <label class="fld"><span>نام دسته</span><input name="name" value="${c.name}" maxlength="40"></label>
-        <label class="fld"><span>ایموجی</span><input name="emoji" value="${c.emoji}" maxlength="8"></label>
+        <label class="fld"><span>نام دسته</span><input name="name" value="${c.name}" maxlength="40" ${c.id === "other" ? "readonly" : ""}></label>
+        ${c.id !== "other" ? html`<label class="fld"><span>ایموجی دسته</span><input name="emoji" value="${c.emoji}" maxlength="8"></label>` : html`<div class="note-box warn full">📷 «سایر» برای عکس واقعی است؛ تنظیمات ظاهری آن ثابت می‌ماند.</div>`}
         <label class="fld"><span>رنگ‌های پس‌زمینه کاشی</span><span style="display:flex;gap:8px"><input type="color" name="c1" value="${safeColor(c.colors[0])}" style="padding:4px;height:46px"><input type="color" name="c2" value="${safeColor(c.colors[1])}" style="padding:4px;height:46px"></span></label>
       </div>
+      ${c.id === "other" ? html`<div class="note-box warn">در «سایر» فقط عکس واقعی پذیرفته می‌شود؛ گروه‌های شخصی‌سازی و مواد قابل حذف غیرفعال‌اند.</div>` : html`
       <div class="section-t">⚙️ گروه‌های شخصی‌سازی</div>
       <p class="mut" style="font-size:13px;margin:0 0 10px">«تک‌انتخابی» مثل سایز یا نوع خمیر؛ «چندانتخابی» مثل افزودنی‌ها. قیمت مثبت = گران‌تر، منفی = ارزان‌تر. در گروه تک‌انتخابی اولین گزینه پیش‌فرض است.</p>
       <div id="groups">${c.options.map((g, gi) => html`<div class="optg" data-g="${gi}">
         <div class="gh"><input data-gt value="${g.t}" placeholder="عنوان گروه (مثلاً سایز)" maxlength="60"><select data-gy><option value="one" ${g.type === "one" ? "selected" : ""}>تک‌انتخابی</option><option value="many" ${g.type === "many" ? "selected" : ""}>چندانتخابی</option></select><button class="icon-btn" data-dg="${gi}" aria-label="حذف گروه">🗑️</button></div>
-        ${g.list.map((o, oi) => html`<div class="optrow"><input data-on value="${o[0]}" placeholder="نام گزینه" maxlength="60" aria-label="نام گزینه"><input data-op value="${o[1]}" inputmode="numeric" dir="ltr" aria-label="قیمت اضافه (تومان)" placeholder="0"><button class="icon-btn" data-do="${gi}:${oi}" aria-label="حذف گزینه">✕</button></div>`)}
+        ${g.list.map((o, oi) => html`<div class="optrow"><input data-on value="${o[0]}" placeholder="نام گزینه" maxlength="60" aria-label="نام گزینه"><input data-op value="${o[1]}" inputmode="numeric" dir="ltr" aria-label="قیمت اضافه (تومان)" placeholder="0"><select data-visual aria-label="اثر سه‌بعدی"><option value="" ${!o[2] ? "selected" : ""}>بدون تغییر مدل</option><option value="add_lettuce" ${o[2] === "add_lettuce" ? "selected" : ""}>＋ کاهو</option><option value="add_tomato" ${o[2] === "add_tomato" ? "selected" : ""}>＋ گوجه</option><option value="add_cheese" ${o[2] === "add_cheese" ? "selected" : ""}>＋ پنیر</option><option value="add_mushroom" ${o[2] === "add_mushroom" ? "selected" : ""}>＋ قارچ</option><option value="add_jalapeno" ${o[2] === "add_jalapeno" ? "selected" : ""}>＋ هالوپینو</option><option value="add_bacon" ${o[2] === "add_bacon" ? "selected" : ""}>＋ ژامبون</option><option value="add_egg" ${o[2] === "add_egg" ? "selected" : ""}>＋ تخم‌مرغ</option><option value="add_onion" ${o[2] === "add_onion" ? "selected" : ""}>＋ پیاز</option><option value="add_pickle" ${o[2] === "add_pickle" ? "selected" : ""}>＋ خیارشور</option><option value="remove_chicken" ${o[2] === "remove_chicken" ? "selected" : ""}>− مرغ (مدل مرغی)</option><option value="remove_sausage" ${o[2] === "remove_sausage" ? "selected" : ""}>− سوسیس (هات‌داگ)</option></select><button class="icon-btn" data-do="${gi}:${oi}" aria-label="حذف گزینه">✕</button></div>`)}
         <button class="btn sm ghost" data-ao="${gi}">＋ گزینه</button></div>`)}</div>
       <button class="btn sm soft" data-ag>＋ گروه شخصی‌سازی</button>
       <div class="section-t">✂️ مواد قابل حذف</div>
       <div class="checks" id="rms">${c.removables.map((r, i) => html`<span class="chip">${r}<button class="x" data-dr="${i}" aria-label="حذف ${r}" style="border:0;background:none;color:#b00">✕</button></span>`)}</div>
       <div style="display:flex;gap:8px;margin-top:8px"><input class="inp" id="nr" placeholder="مثلاً: بدون پیاز" maxlength="40"><button class="btn sm ghost" data-ar>افزودن</button></div>
+      `}
       <p class="err" id="fe"></p>
       <div class="actbar"><button class="btn" id="sv">${isNew ? "ساخت دسته" : "ذخیره دسته"}</button>${!isNew ? html`<button class="btn danger ghost" id="del" style="flex:0 0 auto">🗑️ حذف دسته</button>` : ""}</div>`);
   };
@@ -217,7 +219,7 @@ function catEditor(ctx, cat, onSaved) {
       const options = [];
       for (const g of c.options) {
         if (!g.t.trim()) return (fe.textContent = "عنوان همه گروه‌ها را وارد کنید.");
-        const list = g.list.filter((o) => o[0].trim()).map((o) => [o[0].trim(), parsePrice(o[1] === "" ? 0 : String(o[1]).replace("−", "-"))]);
+        const list = g.list.filter((o) => o[0].trim()).map((o) => { const option = [o[0].trim(), parsePrice(o[1] === "" ? 0 : String(o[1]).replace("−", "-"))]; if (o[2]) option.push(o[2]); return option; });
         if (!list.length) return (fe.textContent = `گروه «${g.t}» حداقل یک گزینه لازم دارد.`);
         if (list.some((o) => !Number.isInteger(o[1]))) return (fe.textContent = `قیمت‌های گروه «${g.t}» باید عدد صحیح باشند.`);
         options.push({ t: g.t.trim(), type: g.type, list });
