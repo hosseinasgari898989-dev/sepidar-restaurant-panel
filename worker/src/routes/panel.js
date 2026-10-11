@@ -92,23 +92,47 @@ async function readBoundedFormData(request, maxBytes) {
   }
 }
 
-function r2MediaKey(imageUrl, expectedOrigin) {
-  if (typeof imageUrl !== "string" || !imageUrl) return null;
+function imageKitEndpoint(env) {
   try {
-    const u = new URL(imageUrl);
-    if (u.origin !== expectedOrigin || u.search || u.hash) return null;
-    const match = u.pathname.match(/^\/media\/([a-z0-9-]{1,40}\/[A-Za-z0-9_-]{20,80}\.(?:jpg|png|webp|avif))$/);
-    return match ? match[1] : null;
+    const u = new URL(String(env.IMAGEKIT_URL_ENDPOINT || ""));
+    if (u.protocol !== "https:" || u.hostname !== "ik.imagekit.io" || u.username || u.password || u.search || u.hash) return null;
+    const basePath = u.pathname.replace(/\/+$/, "");
+    if (!/^\/[A-Za-z0-9_-]{4,40}$/.test(basePath)) return null;
+    return { origin: u.origin, basePath };
   } catch { return null; }
 }
 
-async function requireR2Photo(env, origin, imageUrl) {
-  if (!env.FOOD_IMAGES) throw new ApiError(503, "image_storage_unavailable", "فضای ذخیره‌سازی عکس (R2) هنوز برای این Worker فعال نشده است.");
-  const key = r2MediaKey(imageUrl, origin);
-  if (!key) throw new ApiError(422, "image_required_for_other", "برای دسته «سایر» باید عکس واقعی را از همین پنل در R2 بارگذاری کنید.");
-  const object = await env.FOOD_IMAGES.head(key);
-  if (!object || !IMAGE_CONTENT_TYPES.has(object.httpMetadata?.contentType)) {
-    throw new ApiError(422, "image_required_for_other", "عکس بارگذاری‌شده در R2 پیدا نشد؛ دوباره عکس را بارگذاری کنید.");
+function imageKitAssetUrl(env, imageUrl, restaurantId) {
+  if (typeof imageUrl !== "string" || !imageUrl) return null;
+  const endpoint = imageKitEndpoint(env);
+  if (!endpoint) return null;
+  try {
+    const u = new URL(imageUrl);
+    const folderPrefix = endpoint.basePath + "/sepidar/" + encodeURIComponent(String(restaurantId)) + "/";
+    if (u.origin !== endpoint.origin || !u.pathname.startsWith(folderPrefix) || u.hash) return null;
+    const filename = u.pathname.slice(folderPrefix.length);
+    if (!/^[A-Za-z0-9_-]{20,90}\.(?:jpg|png|webp|avif)$/.test(filename)) return null;
+    const params = [...u.searchParams.entries()];
+    if (params.length && !(params.length === 1 && params[0][0] === "updatedAt" && /^\d{1,16}$/.test(params[0][1]))) return null;
+    return u.origin + u.pathname + (params.length ? "?updatedAt=" + encodeURIComponent(params[0][1]) : "");
+  } catch { return null; }
+}
+
+async function requireImageKitPhoto(env, restaurantId, imageUrl) {
+  if (!env.IMAGEKIT_PRIVATE_KEY || !imageKitEndpoint(env)) {
+    throw new ApiError(503, "image_storage_unavailable", "اتصال ImageKit هنوز در Secrets و تنظیمات Worker کامل نشده است.");
+  }
+  const safeUrl = imageKitAssetUrl(env, imageUrl, restaurantId);
+  if (!safeUrl) throw new ApiError(422, "image_required_for_other", "برای دسته «سایر» باید عکس را از همین پنل در ImageKit بارگذاری کنید.");
+  let response;
+  try {
+    response = await fetch(safeUrl, { method: "HEAD", signal: AbortSignal.timeout(10000) });
+  } catch {
+    throw new ApiError(502, "image_storage_unreachable", "بررسی عکس در ImageKit انجام نشد؛ اتصال را بررسی کنید.");
+  }
+  const contentType = (response.headers.get("Content-Type") || "").split(";")[0].toLowerCase();
+  if (!response.ok || !IMAGE_CONTENT_TYPES.has(contentType)) {
+    throw new ApiError(422, "image_required_for_other", "عکس در ImageKit پیدا نشد یا نوع آن معتبر نیست؛ دوباره آن را بارگذاری کنید.");
   }
 }
 
@@ -203,9 +227,11 @@ on("POST", "/api/panel/orders/:id/status", "orders", async ({ request, env, s, p
 });
 
 // ---------- منو ----------
-// بارگذاری عکس واقعی غذا روی R2؛ فقط کاربران احراز هویت‌شده با مجوز منو.
-on("POST", "/api/panel/menu/images", "menu", async ({ request, env, url, s }) => {
-  if (!env.FOOD_IMAGES) throw new ApiError(503, "image_storage_unavailable", "فضای ذخیره‌سازی عکس (R2) هنوز برای این Worker فعال نشده است.");
+// بارگذاری عکس واقعی غذا به ImageKit؛ فقط کاربران احراز هویت‌شده با مجوز منو.
+on("POST", "/api/panel/menu/images", "menu", async ({ request, env, s }) => {
+  if (!env.IMAGEKIT_PRIVATE_KEY || !imageKitEndpoint(env)) {
+    throw new ApiError(503, "image_storage_unavailable", "ابتدا IMAGEKIT_PRIVATE_KEY را به‌صورت Secret و IMAGEKIT_URL_ENDPOINT را در تنظیمات Worker ثبت کنید.");
+  }
   const policy = { limit: 10, windowMs: 60 * 60 * 1000 };
   const keyHash = await sha256Hex("panel:image-upload:" + s.idHash);
   const key = "panel:image-upload:" + keyHash.slice(0, 36);
@@ -224,14 +250,44 @@ on("POST", "/api/panel/menu/images", "menu", async ({ request, env, url, s }) =>
   if (!ext) throw new ApiError(415, "invalid_image_type", "فقط JPEG، PNG، WebP یا AVIF مجاز است؛ SVG و فایل‌های اجرایی پذیرفته نمی‌شوند.");
   const header = new Uint8Array(await file.slice(0, 16).arrayBuffer());
   if (!validImageSignature(header, type)) throw new ApiError(415, "invalid_image_signature", "محتوای فایل با نوع عکس اعلام‌شده سازگار نیست.");
-  const objectKey = `${s.restaurantId}/${randomId(18)}.${ext}`;
-  await env.FOOD_IMAGES.put(objectKey, file, {
-    httpMetadata: { contentType: type, cacheControl: "public, max-age=31536000, immutable" },
-    customMetadata: { restaurant_id: s.restaurantId, uploaded_by: s.actor, uploaded_at: String(Date.now()) },
+
+  const fileName = randomId(18) + "." + ext;
+  const uploadForm = new FormData();
+  uploadForm.append("file", new Blob([await file.arrayBuffer()], { type }), fileName);
+  uploadForm.append("fileName", fileName);
+  uploadForm.append("folder", "/sepidar/" + s.restaurantId);
+  uploadForm.append("useUniqueFileName", "false");
+
+  let providerResponse;
+  try {
+    providerResponse = await fetch("https://upload.imagekit.io/api/v1/files/upload", {
+      method: "POST",
+      headers: { Authorization: "Basic " + btoa(env.IMAGEKIT_PRIVATE_KEY + ":") },
+      body: uploadForm,
+      signal: AbortSignal.timeout(20000),
+    });
+  } catch {
+    throw new ApiError(502, "image_provider_unreachable", "ارتباط با ImageKit برقرار نشد؛ چند لحظه بعد دوباره تلاش کنید.");
+  }
+  if (!providerResponse.ok) {
+    console.error("ImageKit upload failed with status", providerResponse.status);
+    throw new ApiError(502, "image_provider_upload_failed", providerResponse.status === 401 || providerResponse.status === 403
+      ? "کلید خصوصی ImageKit معتبر نیست یا دسترسی بارگذاری ندارد؛ Secret را بررسی کنید."
+      : "ImageKit تصویر را نپذیرفت؛ سهمیه، دسترسی و تنظیمات حساب را بررسی کنید.");
+  }
+  let uploaded;
+  try { uploaded = await providerResponse.json(); }
+  catch { throw new ApiError(502, "image_provider_invalid_response", "پاسخ ImageKit قابل خواندن نبود."); }
+
+  const imageUrl = imageKitAssetUrl(env, String(uploaded.url || ""), s.restaurantId);
+  if (!imageUrl) {
+    console.error("ImageKit returned an unexpected asset URL");
+    throw new ApiError(502, "image_provider_invalid_url", "ImageKit نشانی‌ای خارج از مسیر امن سپیدار برگرداند.");
+  }
+  await audit(env.DB, s.restaurantId, s.actor, "menu.image_upload", "image", String(uploaded.fileId || fileName), {
+    provider: "imagekit", type, size: file.size,
   });
-  const imageUrl = url.origin + "/media/" + objectKey.split("/").map(encodeURIComponent).join("/");
-  await audit(env.DB, s.restaurantId, s.actor, "menu.image_upload", "image", objectKey, { type, size: file.size });
-  return json({ ok: true, image_url: imageUrl, key: objectKey, type, size: file.size }, 201);
+  return json({ ok: true, image_url: imageUrl, key: String(uploaded.filePath || fileName), type, size: file.size, provider: "imagekit" }, 201);
 });
 
 on("GET", "/api/panel/menu", "menu", async ({ env, s }) => json({ ok: true, categories: await loadMenu(env.DB, s.restaurantId, { includeInactive: true }) }));
@@ -394,7 +450,7 @@ on("POST", "/api/panel/menu/items", "menu", async ({ request, env, s, url }) => 
   const b = await readJson(request);
   const f = await itemFields(env, s, b, false);
   if (f.category_id === "other") {
-    await requireR2Photo(env, url.origin, f.image_url);
+    await requireImageKitPhoto(env, s.restaurantId, f.image_url);
     f.emoji = "📷";
     f.model_url = null;
     f.meta = "{}";
@@ -418,7 +474,7 @@ on("PATCH", "/api/panel/menu/items/:id", "menu", async ({ request, env, s, p, ur
   const finalCategoryId = f.category_id || before.category_id;
   const finalImageUrl = Object.prototype.hasOwnProperty.call(f, "image_url") ? f.image_url : before.image_url;
   if (finalCategoryId === "other") {
-    await requireR2Photo(env, url.origin, finalImageUrl);
+    await requireImageKitPhoto(env, s.restaurantId, finalImageUrl);
     f.emoji = "📷";
     f.model_url = null;
     f.meta = "{}";
