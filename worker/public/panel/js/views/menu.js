@@ -9,7 +9,7 @@ export default {
     el.innerHTML = html`
       <div class="view-h"><div><h2>مدیریت منو</h2><p>یک منوی مشترک: همان چیزی که مشتری در سایت سفارش می‌بیند</p></div>
         <div class="tools"><button class="btn ghost" data-newcat>🗂️ دسته جدید</button><button class="btn" data-new>＋ غذای جدید</button></div></div>
-      <div class="note-box">ℹ️ <span>تغییرات پس از ذخیره موفق در سرور، از مسیر عمومی منو برای سایت مشتریان قابل دریافت‌اند. ${ctx.capability("image_upload") && !ctx.demo ? "" : "آپلود مستقیم عکس هنوز به فضای ذخیره‌سازی (R2) وصل نیست؛ فعلاً آدرس اینترنتی عکس را وارد کنید."}</span></div>
+      <div class="note-box">ℹ️ <span>تغییرات پس از ذخیره موفق در سرور، از مسیر عمومی منو برای سایت مشتریان قابل دریافت‌اند. ${ctx.capability("image_upload") && !ctx.demo ? "" : "R2 هنوز فعال نشده؛ در دسته‌های عادی می‌توان آدرس HTTPS عکس را وارد کرد، اما دسته «سایر» تا اتصال R2 فقط در حالت نمایشی قابل پیش‌نمایش است."}</span></div>
       <div class="tools" style="margin-bottom:10px"><label class="search"><span class="sr">جستجوی غذا</span><input id="q" type="search" placeholder="جستجوی غذا…" maxlength="60"></label></div>
       <div class="chips" id="cf"></div>
       <div id="mn">${skeleton(3, 180)}</div>`.s;
@@ -26,7 +26,7 @@ export default {
       shown.forEach((c) => {
         const items = c.items.filter((i) => !q || (i.name + i.description).includes(q));
         if (q && !items.length) return;
-        out += html`<div class="cat-head"><h3>${c.emoji} ${c.name}</h3><span class="mut num" style="font-size:13px">${F(c.items.length)} غذا · ${F(c.options.length)} گروه شخصی‌سازی</span><span class="sp"></span><button class="btn sm ghost" data-ec="${c.id}">✏️ دسته و گزینه‌ها</button><button class="btn sm soft" data-new="${c.id}">＋ غذا</button></div>
+        out += html`<div class="cat-head"><h3>${c.emoji} ${c.name}</h3>${c.id === "other" ? html`<span class="badge">📷 عکس واقعی الزامی · بدون مدل سه‌بعدی</span>` : ""}<span class="mut num" style="font-size:13px">${F(c.items.length)} غذا · ${F(c.options.length)} گروه شخصی‌سازی</span><span class="sp"></span><button class="btn sm ghost" data-ec="${c.id}">✏️ دسته و گزینه‌ها</button><button class="btn sm soft" data-new="${c.id}">＋ غذا</button></div>
           ${items.length ? html`<div class="mgrid">${items.map((i) => card(c, i))}</div>` : empty("🍽️", "این دسته هنوز غذایی ندارد", "با «＋ غذا» اولین غذا را اضافه کنید.")}`.s;
       });
       mn.innerHTML = out || (cats.length ? empty("🔎", "غذایی پیدا نشد") : empty("🗂️", "منو خالی است", "ابتدا یک دسته بسازید.")).s;
@@ -76,11 +76,14 @@ function itemEditor(ctx, cats, item, onSaved, catId) {
       <div class="preview-card" id="pv">${tile(it.emoji, c.colors, { size: "lg", img: it.image_url })}<div><b id="pvn">${it.name || "نام غذا"}</b><div class="mut" style="font-size:13px" id="pvd">${it.description || "توضیح کوتاه"}</div><b class="num" style="color:var(--or)" id="pvp">${Number.isInteger(parsePrice(it.price)) ? money(parsePrice(it.price)) : "—"}</b></div></div>
       <form id="f" novalidate><div class="form-grid">
         <label class="fld"><span>نام غذا</span><input name="name" value="${it.name}" maxlength="60" required></label>
-        <label class="fld"><span>دسته</span><select name="category_id">${cats.map((x) => html`<option value="${x.id}" ${x.id === c.id ? "selected" : ""}>${x.emoji} ${x.name}</option>`)}</select></label>
+        <label class="fld"><span>دسته</span><select name="category_id">${cats.map((x) => html`<option value="${x.id}" ${x.id === c.id ? "selected" : ""}>${x.emoji} ${x.name}${x.id === "other" ? " · فقط عکس واقعی" : ""}</option>`)}</select></label>
         <label class="fld"><span>قیمت پایه <small>(تومان)</small></span><input name="price" value="${it.price === "" ? "" : F(it.price).replace(/٬/g, "")}" inputmode="numeric" required></label>
-        <label class="fld"><span>ایموجی <small>(وقتی عکس ندارد، سه‌بعدی نمایش داده می‌شود)</small></span><input name="emoji" value="${it.emoji}" maxlength="8"></label>
+        <label class="fld"><span>ایموجی <small>(دسته‌های عادی بدون عکس، مدل سه‌بعدی دارند؛ «سایر» فقط عکس واقعی می‌پذیرد)</small></span><input name="emoji" value="${it.emoji}" maxlength="8"></label>
         <label class="fld full"><span>توضیحات</span><input name="description" value="${it.description}" maxlength="200"></label>
-        <label class="fld full"><span>آدرس عکس <small>(اختیاری · https://…)</small></span><input name="image_url" value="${it.image_url}" inputmode="url" dir="ltr" placeholder="https://"></label>
+        <label class="fld full"><span>آدرس عکس <small>(در صورت آپلود R2، خودکار پر می‌شود)</small></span><input name="image_url" value="${it.image_url}" maxlength="500" inputmode="url" dir="ltr" placeholder="https://…/media/main/…"></label>
+        <label class="fld full"><span>بارگذاری عکس محصول <small>JPEG / PNG / WebP / AVIF · حداکثر ۵ مگابایت</small></span><input name="image_file" type="file" accept="image/jpeg,image/png,image/webp,image/avif,.jpg,.jpeg,.png,.webp,.avif"></label>
+        <small id="imageUploadHelp" class="mut full"></small><div class="full image-upload-actions"><button class="btn soft" type="button" id="uploadImage">📷 بارگذاری عکس</button><span class="mut" id="imageUploadStatus" aria-live="polite"></span></div>
+        ${c.id === "other" ? html`<div class="note-box warn full">دسته «سایر» مدل سه‌بعدی خودکار ندارد؛ برای این دسته باید عکس واقعی محصول را بارگذاری کنی.</div>` : ""}
       </div>
       ${c.options.some((g) => g.type === "one") ? html`<div class="section-t">⚙️ گزینه پیش‌فرض این غذا</div><p class="mut" style="font-size:13px;margin:0 0 8px">قیمت پایه برای همین گزینه‌هاست؛ تغییر آن توسط مشتری، اختلاف قیمت را اعمال می‌کند (مثل برگر مرغ با پروتئین مرغ).</p>
         <div class="form-grid">${c.options.map((g, gi) => g.type === "one" ? html`<label class="fld"><span>${g.t}</span><select data-def="${gi}">${g.list.map((o, oi) => html`<option value="${oi}" ${((it.meta.s || {})[gi] || 0) === oi ? "selected" : ""}>${o[0]}${o[1] ? ` (${o[1] > 0 ? "+" : "−"}${F(Math.abs(o[1]))})` : ""}</option>`)}</select></label>` : "")}</div>` : ""}
@@ -92,24 +95,46 @@ function itemEditor(ctx, cats, item, onSaved, catId) {
       <div class="actbar"><button class="btn" type="submit" id="sv">${isNew ? "افزودن به منو" : "ذخیره تغییرات"}</button>${!isNew ? html`<button class="btn danger ghost" type="button" id="del" style="flex:0 0 auto">🗑️ حذف</button>` : ""}</div>
       </form>`);
     const f = s.body.querySelector("#f");
+    const uploadButton = s.body.querySelector("#uploadImage");
+    const uploadHelp = s.body.querySelector("#imageUploadHelp");
+    uploadHelp.textContent = ctx.demo ? "حالت نمایشی: عکس فقط پیش‌نمایش محلی است و در سرور ذخیره نمی‌شود." : ctx.capability("image_upload") ? "پس از آپلود، عکس در R2 ذخیره و در منوی مشترک مشتری/مدیریت نمایش داده می‌شود." : "R2 هنوز در Cloudflare فعال نشده؛ آپلود واقعی تا زمان اتصال فضای ذخیره‌سازی در دسترس نیست.";
+    if (!ctx.demo && !ctx.capability("image_upload")) uploadButton.disabled = true;
     const sync = () => {
       it.name = f.name.value; it.description = f.description.value; it.emoji = f.emoji.value || "🍽️"; it.image_url = f.image_url.value.trim(); it.price = f.price.value;
       s.body.querySelector("#pvn").textContent = it.name || "نام غذا";
       s.body.querySelector("#pvd").textContent = it.description || "توضیح کوتاه";
       const p = parsePrice(it.price);
       s.body.querySelector("#pvp").textContent = Number.isInteger(p) ? money(p) : "—";
-      s.body.querySelector("#pv .fe").textContent = it.emoji;
+      const emoji = s.body.querySelector("#pv .fe"); if (emoji) emoji.textContent = it.emoji;
     };
     f.oninput = (e) => { if (e.target.name === "category_id") return; sync(); };
     f.image_url.onchange = () => { sync(); render(); };
     f.category_id.onchange = () => { sync(); it.category_id = f.category_id.value; it.meta = { ...it.meta, s: {} }; it.removables = null; render(); };
     s.body.querySelectorAll("[data-sw]").forEach((b) => (b.onclick = () => { it[b.dataset.sw] = !it[b.dataset.sw]; b.setAttribute("aria-checked", it[b.dataset.sw]); }));
+    uploadButton.onclick = async () => {
+      const file = f.querySelector('[name="image_file"]').files?.[0];
+      const status = s.body.querySelector("#imageUploadStatus");
+      if (!file) { status.textContent = "ابتدا یک فایل عکس انتخاب کن."; return; }
+      if (!["image/jpeg","image/png","image/webp","image/avif"].includes(file.type) || file.size < 16 || file.size > 5*1024*1024) { status.textContent = "فقط JPEG/PNG/WebP/AVIF با حداکثر ۵ مگابایت مجاز است."; return; }
+      if (ctx.demo) {
+        const reader = new FileReader();
+        reader.onload = () => { it.image_url = String(reader.result || ""); render(); s.body.querySelector("#imageUploadStatus").textContent = "پیش‌نمایش محلی آماده شد؛ در سرور ذخیره نشده است."; };
+        reader.onerror = () => { status.textContent = "خواندن فایل عکس ناموفق بود."; };
+        reader.readAsDataURL(file); return;
+      }
+      if (!ctx.capability("image_upload")) { status.textContent = "برای آپلود واقعی باید R2 به Worker متصل شود."; return; }
+      busy(uploadButton, async () => {
+        try { const out = await ctx.api.uploadImage(file); it.image_url = out.image_url; render(); s.body.querySelector("#imageUploadStatus").textContent = "عکس در R2 ذخیره شد."; }
+        catch (err) { const el = s.body.querySelector("#imageUploadStatus"); if (el) el.textContent = err.message || "آپلود عکس ناموفق بود."; }
+      });
+    };
     f.onsubmit = (e) => {
       e.preventDefault(); sync();
       const fe = s.body.querySelector("#fe"), price = parsePrice(it.price);
       if (!it.name.trim()) return (fe.textContent = "نام غذا الزامی است.");
       if (!Number.isInteger(price) || price < 0) return (fe.textContent = "قیمت باید یک عدد صحیح (تومان) باشد.");
-      if (it.image_url && !/^https?:\/\//i.test(it.image_url)) return (fe.textContent = "آدرس عکس باید با https:// شروع شود.");
+      if (it.image_url && !/^https?:\/\//i.test(it.image_url) && !(ctx.demo && it.image_url.startsWith("data:image/"))) return (fe.textContent = "آدرس عکس باید با https:// شروع شود.");
+      if (f.category_id.value === "other" && (!it.image_url || !it.image_url.includes("/media/")) && !ctx.demo) return (fe.textContent = "برای دسته «سایر» باید عکس واقعی را در R2 بارگذاری کنید.");
       const sdef = {};
       s.body.querySelectorAll("[data-def]").forEach((x) => { if (+x.value) sdef[x.dataset.def] = +x.value; });
       const removables = c.removables.length ? [...s.body.querySelectorAll("[data-rm]:checked")].map((x) => x.value) : null;

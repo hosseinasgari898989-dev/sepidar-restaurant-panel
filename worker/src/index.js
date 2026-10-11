@@ -29,7 +29,7 @@ function health(env) {
       panel_auth: authConfigured(env),          // فقط بله/خیر؛ هیچ مقداری از Secret افشا نمی‌شود
       orders: db, menu: db, reviews: db, review_reply: db, leads: db, reports: db,
       realtime: false,                          // دریافت سفارش فعلاً دوره‌ای (polling) است
-      image_upload: false,                      // آپلود فایل نیازمند R2 است؛ فعلاً فقط آدرس عکس
+      image_upload: Boolean(env.FOOD_IMAGES),    // آپلود امن عکس فقط وقتی R2 به‌صورت binding فعال باشد
       qr: Boolean(env.PUBLIC_SITE_URL),
     },
     timestamp: new Date().toISOString(),
@@ -47,6 +47,27 @@ export default {
     if (method === "OPTIONS") return new Response(null, { status: 204, headers });
 
     try {
+      if ((method === "GET" || method === "HEAD") && url.pathname.startsWith("/media/")) {
+        if (!env.FOOD_IMAGES) throw new ApiError(404, "media_not_found", "عکس پیدا نشد.");
+        let key;
+        try { key = url.pathname.slice("/media/".length).split("/").map(decodeURIComponent).join("/"); }
+        catch { throw new ApiError(404, "media_not_found", "عکس پیدا نشد."); }
+        if (!/^[a-z0-9-]{1,40}\/[A-Za-z0-9_-]{20,80}\.(?:jpg|png|webp|avif)$/.test(key)) throw new ApiError(404, "media_not_found", "عکس پیدا نشد.");
+        const object = await env.FOOD_IMAGES.get(key);
+        if (!object) throw new ApiError(404, "media_not_found", "عکس پیدا نشد.");
+        const contentType = object.httpMetadata?.contentType;
+        if (!["image/jpeg", "image/png", "image/webp", "image/avif"].includes(contentType)) throw new ApiError(415, "invalid_media", "نوع عکس پشتیبانی نمی‌شود.");
+        const mediaHeaders = new Headers({
+          "Content-Type": contentType,
+          "Cache-Control": "public, max-age=31536000, immutable",
+          "X-Content-Type-Options": "nosniff",
+          "Cross-Origin-Resource-Policy": "cross-origin",
+          "Access-Control-Allow-Origin": "*",
+          "Content-Security-Policy": "default-src 'none'; sandbox",
+          "ETag": object.httpEtag,
+        });
+        return new Response(method === "HEAD" ? null : object.body, { status: 200, headers: mediaHeaders });
+      }
       if (method === "GET" && url.pathname.startsWith("/panel/")) {
         const override = PANEL_OVERRIDES.get(url.pathname);
         if (override) {

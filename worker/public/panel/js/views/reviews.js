@@ -29,12 +29,14 @@ export default {
         el.querySelector("#ls").innerHTML = (d.reviews.length ? html`${d.reviews.map((r) => html`<article class="rv ${r.visibility === "hidden" ? "hid" : ""}" data-id="${r.id}">
           <div class="rv-h">${stars(r.rating)}<b>${r.author_name || "مشتری"}</b><span class="mut" style="font-size:12.5px">${date(r.created_at, { year: "numeric" })} · ${ago(r.created_at)}</span>
             ${r.item_name ? html`<span class="tg">🍽️ ${r.item_name}</span>` : ""}${r.order_number ? html`<span class="badge num">سفارش #${F(r.order_number)}</span>` : ""}
-            ${r.visibility === "hidden" ? html`<span class="badge">پنهان از سایت</span>` : ""}${r.flagged ? html`<span class="badge" style="background:#fff0f0;color:#b00">🚩 ${r.flag_reason || "نامناسب"}</span>` : ""}</div>
+            ${r.visibility === "hidden" ? html`<span class="badge">پنهان از سایت</span>` : ""}${r.flagged ? html`<span class="badge" style="background:#fff0f0;color:#b00">🚩 ${r.flag_reason || "نامناسب"}</span>` : ""}${r.author_banned ? html`<span class="badge" style="background:#fff0f0;color:#b00">⛔ نویسنده مسدود است</span>` : ""}</div>
           ${r.comment ? html`<p>${r.comment}</p>` : html`<p class="mut">بدون متن؛ فقط امتیاز ثبت شده.</p>`}
           ${r.reply ? html`<div class="reply"><b>پاسخ رستوران</b> <span class="mut" style="font-size:12px">${r.reply_at ? ago(r.reply_at) : ""}</span><div>${r.reply}</div></div>` : ""}
           <div class="rv-act">
             <button class="btn sm ghost" data-a="vis">${r.visibility === "hidden" ? "👁️ انتشار دوباره" : "🙈 پنهان‌کردن"}</button>
             <button class="btn sm ghost" data-a="flag">${r.flagged ? "برداشتن علامت" : "🚩 گزارش نامناسب"}</button>
+            <button class="btn sm ghost" data-a="${r.author_banned ? "unban" : "ban"}" ${r.client_key_hash ? "" : "disabled"}>${r.author_banned ? "🔓 رفع مسدودی نویسنده" : "⛔ مسدودکردن نویسنده"}</button>
+            <button class="btn sm danger ghost" data-a="delete">🗑️ حذف نظر</button>
             ${d.reply_supported ? html`<button class="btn sm soft" data-a="reply">💬 ${r.reply ? "ویرایش پاسخ" : "پاسخ رسمی"}</button>` : html`<span class="badge wait">پاسخ رسمی: در انتظار API</span>`}
           </div></article>`)}`
           : empty("⭐", f.q || f.rating !== "all" || f.visibility !== "all" || f.flagged ? "نظری با این فیلتر نیست" : "هنوز نظری ثبت نشده", "نظرهایی که مشتریان در سایت ثبت می‌کنند اینجا نمایش داده می‌شوند.")).s;
@@ -63,10 +65,27 @@ export default {
           if (reason == null) return;
           body = { flagged: true, flag_reason: reason || "نامناسب" };
         }
-      } else {
+      } else if (a.dataset.a === "reply") {
         const reply = await confirmBox({ title: "پاسخ رسمی رستوران", text: "این پاسخ زیر نظر مشتری در سایت نمایش داده می‌شود. برای حذف پاسخ، متن را خالی بگذارید.", ok: "ثبت پاسخ", input: { label: "متن پاسخ", max: 500, placeholder: "از بازخورد شما ممنونیم…" } });
         if (reply == null) return;
         body = { reply: reply || "" };
+      } else if (a.dataset.a === "ban") {
+        if (!rv.client_key_hash) return toast("این نظر قدیمی است و شناسه امن نویسنده ندارد؛ بن مستقیم ممکن نیست.", "err");
+        const reason = await confirmBox({ title: "مسدودکردن نویسنده برای ۳۰ روز؟", text: "بن در سرور ذخیره می‌شود و با پاک‌کردن localStorage معمولی از بین نمی‌رود. مرورگر باید شناسه ناشناس قبلی خود را نگه داشته باشد.", ok: "مسدودکردن ۳۰ روزه", danger: true, input: { label: "دلیل (اختیاری)", max: 160, placeholder: "اسپم یا رفتار نامناسب" } });
+        if (reason == null) return;
+        busy(a, async () => {
+          try { await ctx.api.banReviewAuthor(rv.id, { duration: "30d", reason }); toast("نویسنده برای ۳۰ روز مسدود شد"); await load(); }
+          catch (err) { toast(err.message, "err"); }
+        });
+        return;
+      } else if (a.dataset.a === "unban") {
+        if (!(await confirmBox({ title: "رفع مسدودی نویسنده؟", text: "از این پس همان شناسه ناشناس مرورگر می‌تواند دوباره نظر ارسال کند.", ok: "رفع مسدودی" }))) return;
+        busy(a, async () => { try { await ctx.api.unbanReviewAuthor(rv.id); toast("مسدودی برداشته شد"); await load(); } catch (err) { toast(err.message, "err"); } });
+        return;
+      } else if (a.dataset.a === "delete") {
+        if (!(await confirmBox({ title: "حذف نظر مشتری؟", text: "این نظر به‌طور دائمی حذف می‌شود. این کار امتیاز را هم از میانگین خارج می‌کند.", ok: "حذف نظر", danger: true }))) return;
+        busy(a, async () => { try { await ctx.api.deleteReview(rv.id); toast("نظر حذف شد"); await load(); } catch (err) { toast(err.message, "err"); } });
+        return;
       }
       busy(a, async () => {
         try { await ctx.api.updateReview(rv.id, body); toast("ذخیره شد"); await load(); }

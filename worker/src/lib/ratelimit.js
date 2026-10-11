@@ -1,6 +1,6 @@
 import { ApiError } from "./http.js";
 
-// محدودسازی ساده مبتنی بر D1. key باید از قبل هش شده باشد (IP خام ذخیره نمی‌شود).
+// محدودسازی ساده مبتنی بر D1. کلیدها باید از شناسه‌ی ناشناس/نشست مشتق شوند؛ داده‌ی شناسایی خام ذخیره نکنید.
 export async function checkLimit(db, key, { limit, windowMs, lockMs = 0 }) {
   const t = Date.now();
   const row = await db.prepare("SELECT count, window_start, locked_until FROM rate_limits WHERE key = ?").bind(key).first();

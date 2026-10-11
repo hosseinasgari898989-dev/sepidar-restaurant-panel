@@ -100,7 +100,7 @@ function loginScreen(notice = "") {
         <p class="err" id="er" role="alert">${notice}</p>
         <button class="btn block" id="go" type="submit" disabled>ورود به پنل</button>
         <button class="demo-link" type="button" id="demo">مشاهده نسخه نمایشی با داده‌های ساختگی</button>
-        <p class="sec-note"><span>🔒</span><span>توکن فقط در سرور بررسی می‌شود و در مرورگر ذخیره نمی‌شود. پس از ورود، یک نشست محدود ${raw("<b>۸ ساعته</b>")} ساخته می‌شود.</span></p>
+        <p class="sec-note"><span>🔒</span><span>توکن فقط در سرور بررسی می‌شود و در مرورگر ذخیره نمی‌شود. نشست ورود محدود است: توکن اولیه ۸ ساعت و توکن‌های مدیریتی حداکثر ۳۰ روز یا تا پایان اعتبار خود توکن معتبر می‌مانند.</span></p>
       </form>
     </section>
   </main>`;
@@ -178,7 +178,7 @@ async function enterApp() {
         : html`<b>🔐 نشست امن</b>اعتبار تا ساعت ${time(session.expires_at)}${session.bootstrap ? html`<br><span>ورود با توکن اولیه آزمایشی</span>` : ""}`}</div>
     </aside>
     <div class="main">
-      ${api.mode === "demo" ? html`<div class="demo-bar" role="note"><span>🧪 نسخه نمایشی — همه اعداد و سفارش‌ها ساختگی‌اند و هیچ تغییری روی سرور ذخیره نمی‌شود.</span><button class="btn sm ghost" id="exitDemo">خروج</button></div>` : ""}
+      ${api.mode === "demo" ? html`<div class="demo-bar" role="note"><span>🧪 محیط آزمایشی (فقط پیش‌نمایش): سفارش‌ها، مشتری‌ها و تغییرات ساختگی‌اند؛ چیزی روی سرور ذخیره یا ارسال نمی‌شود.</span><button class="btn sm ghost" id="exitDemo">خروج از حالت آزمایشی</button></div>` : ""}
       <header class="top">
         <div class="rest"><h1 id="rname">${session.restaurant?.name || "رستوران"}</h1><small id="vtitle"></small></div>
         <div class="sp"></div>
