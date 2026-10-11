@@ -2,6 +2,16 @@ import { ApiError, baseHeaders, applyCors, json, errorResponse } from "./lib/htt
 import { authConfigured } from "./lib/auth.js";
 import { handlePanel } from "./routes/panel.js";
 import { handlePublic } from "./routes/public.js";
+import { PANEL_OVERRIDES } from "./lib/panel-overrides.js";
+
+const PANEL_SECURITY_HEADERS = {
+  "Content-Security-Policy": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: blob: https:; connect-src 'self'; frame-src https://hosseinasgari898989-dev.github.io; frame-ancestors 'none'; base-uri 'none'; form-action 'self'",
+  "X-Frame-Options": "DENY",
+  "X-Content-Type-Options": "nosniff",
+  "Referrer-Policy": "no-referrer",
+  "Permissions-Policy": "camera=(), microphone=(), geolocation=()",
+  "Cache-Control": "no-cache",
+};
 
 const SERVICE_NAME = "sepidar-restaurant-panel";
 const API_VERSION = "2026-10-panel-1";
@@ -37,6 +47,15 @@ export default {
     if (method === "OPTIONS") return new Response(null, { status: 204, headers });
 
     try {
+      if (method === "GET" && url.pathname.startsWith("/panel/")) {
+        const override = PANEL_OVERRIDES.get(url.pathname);
+        if (override) {
+          const panelHeaders = new Headers(PANEL_SECURITY_HEADERS);
+          panelHeaders.set("Content-Type", override.contentType);
+          return new Response(override.body, { status: 200, headers: panelHeaders });
+        }
+        if (env.ASSETS) return env.ASSETS.fetch(request);
+      }
       if (method === "GET" && (url.pathname === "/" || url.pathname === "/health")) return json(health(env), 200, { headers });
       if (url.pathname.startsWith("/api/panel/")) return await handlePanel(request, env, url);
       if (isPublic) return await handlePublic(request, env, url, headers);
