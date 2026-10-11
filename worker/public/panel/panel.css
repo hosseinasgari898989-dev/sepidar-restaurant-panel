@@ -523,3 +523,8 @@ body[data-theme="dark"] .qr-card{box-shadow:var(--sh2)}
  .cpill{padding:4px 7px}
 }
 
+body .login-art{background:radial-gradient(ellipse at 76% 50%,color-mix(in srgb,var(--or) 34%,#243d2b) 0%,transparent 40%),radial-gradient(ellipse at 2% 100%,color-mix(in srgb,var(--or) 40%,transparent) 0%,transparent 45%),linear-gradient(135deg,color-mix(in srgb,var(--or) 25%,#12281f),#1c382b 62%,#243d2b)!important}
+body[data-theme="dark"] .login-art{background:radial-gradient(ellipse at 76% 50%,color-mix(in srgb,var(--or) 26%,#192720) 0%,transparent 40%),radial-gradient(ellipse at 2% 100%,color-mix(in srgb,var(--or) 30%,transparent) 0%,transparent 45%),linear-gradient(135deg,#101814,color-mix(in srgb,var(--or) 15%,#18261f) 62%,#17251f)!important}
+body[data-theme="dark"] .btn.danger{color:#fff!important}
+body[data-theme="dark"] .rv.hid{background:var(--soft)!important;border-color:var(--line)!important;color:var(--mut)}
+body[data-theme="dark"] .note-box.warn{background:var(--warn-bg)!important;color:var(--warn)!important;border-color:var(--line)}
