@@ -36,6 +36,8 @@ export default {
             <button class="btn sm ghost" data-a="vis">${r.visibility === "hidden" ? "👁️ انتشار دوباره" : "🙈 پنهان‌کردن"}</button>
             <button class="btn sm ghost" data-a="flag">${r.flagged ? "برداشتن علامت" : "🚩 گزارش نامناسب"}</button>
             <button class="btn sm ghost" data-a="${r.author_banned ? "unban" : "ban"}" ${r.client_key_hash ? "" : "disabled"}>${r.author_banned ? "🔓 رفع مسدودی نویسنده" : "⛔ مسدودکردن نویسنده"}</button>
+            <button class="btn sm ${r.featured ? "soft" : "ghost"}" data-a="feature">${r.featured ? "✨ برداشتن جلوه ویژه" : "✨ ویژه‌کردن نظر"}</button>
+            ${r.featured ? html`<button class="btn sm ghost" data-a="style">🎨 تغییر جلوه</button>` : ""}
             <button class="btn sm danger ghost" data-a="delete">🗑️ حذف نظر</button>
             ${d.reply_supported ? html`<button class="btn sm soft" data-a="reply">💬 ${r.reply ? "ویرایش پاسخ" : "پاسخ رسمی"}</button>` : html`<span class="badge wait">پاسخ رسمی: در انتظار API</span>`}
           </div></article>`)}`
@@ -54,7 +56,16 @@ export default {
       const a = e.target.closest("[data-a]"); if (!a) return;
       const rv = el._rows.find((x) => x.id === a.closest("[data-id]").dataset.id);
       let body;
-      if (a.dataset.a === "vis") {
+      if (a.dataset.a === "feature") {
+        body = {
+          featured: !rv.featured,
+          feature_style: rv.featured ? (rv.feature_style || "glow") : "glow",
+        };
+      } else if (a.dataset.a === "style") {
+        const styles = ["glow", "shine", "burst"];
+        const current = styles.includes(rv.feature_style) ? rv.feature_style : "glow";
+        body = { featured: true, feature_style: styles[(styles.indexOf(current) + 1) % styles.length] };
+      } else if (a.dataset.a === "vis") {
         const hide = rv.visibility !== "hidden";
         if (!(await confirmBox({ title: hide ? "پنهان‌کردن این نظر؟" : "انتشار دوباره نظر؟", text: hide ? "متن نظر از سایت مشتریان پنهان می‌شود؛ امتیاز آن همچنان در میانگین حساب می‌شود و این عملیات در سابقه ثبت می‌شود." : "نظر دوباره در سایت مشتریان نمایش داده می‌شود.", ok: hide ? "پنهان شود" : "منتشر شود", danger: hide }))) return;
         body = { visibility: hide ? "hidden" : "published" };
