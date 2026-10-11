@@ -299,8 +299,15 @@ on("POST", "/api/panel/ai-search", "menu", async ({ request, env, s }) => {
   }
   await panelMutationLimit(env, s, "ai-price-search", 20, 60 * 60 * 1000);
   const b = await readJson(request, 2048);
-  const query = str(b.query, { min: 2, max: 180, field: "عبارت جستجو" });
-  const searchQuery = /قیمت|price|cost/i.test(query) ? query : ("قیمت روز " + query + " ایران تومان");
+  const itemId = str(b.item_id, { min: 1, max: 80, field: "غذای ثبت‌شده" });
+  const region = str(b.region || "ایران", { min: 2, max: 80, field: "شهر یا منطقه" });
+  const item = await env.DB.prepare(
+    "SELECT i.id, i.name, i.description, i.category_id, c.name AS category_name, i.price FROM menu_items i LEFT JOIN categories c ON c.restaurant_id = i.restaurant_id AND c.id = i.category_id WHERE i.restaurant_id = ? AND i.id = ? AND i.archived = 0 LIMIT 1"
+  ).bind(s.restaurantId, itemId).first();
+  if (!item) throw new ApiError(404, "menu_item_not_found", "غذای انتخاب‌شده در منوی فعلی پیدا نشد؛ منو را تازه‌سازی کن.");
+
+  // جستجو باید دربارهٔ یک غذای واقعیِ ثبت‌شده باشد، نه عبارت کلی و مبهم.
+  const searchQuery = '"' + String(item.name).slice(0, 80) + '" قیمت منوی رستوران ' + region + " ایران تومان";
   let response;
   try {
     response = await fetch("https://api.tavily.com/search", {
@@ -311,45 +318,94 @@ on("POST", "/api/panel/ai-search", "menu", async ({ request, env, s }) => {
         query: searchQuery,
         search_depth: "advanced",
         topic: "general",
-        max_results: 6,
-        include_answer: true,
+        time_range: "year",
+        country: "iran",
+        max_results: 10,
+        include_answer: false,
         include_raw_content: false,
         include_images: false,
+        include_usage: false,
       }),
       signal: AbortSignal.timeout(12000),
     });
   } catch {
-    throw new ApiError(502, "price_search_unreachable", "ارتباط با سرویس جستجوی وب برقرار نشد؛ دوباره تلاش کنید.");
+    throw new ApiError(502, "price_search_unreachable", "ارتباط با سرویس جستجوی وب برقرار نشد؛ دوباره تلاش کن.");
   }
   if (!response.ok) {
-    // Never return provider payloads that might echo request metadata or secrets.
     console.error("price search provider status", response.status);
-    throw new ApiError(502, "price_search_failed", "سرویس جستجوی وب پاسخ معتبر نداد؛ پیکربندی کلید سرویس را بررسی کنید.");
+    throw new ApiError(502, "price_search_failed", "سرویس جستجوی وب پاسخ معتبر نداد؛ کلید و سهمیهٔ Tavily را بررسی کن.");
   }
   let data;
-  try { data = await response.json(); } catch { throw new ApiError(502, "price_search_invalid_response", "پاسخ جستجوی وب قابل خواندن نبود."); }
-  const candidatePrice = (text) => {
-    const raw = String(text || "");
-    const pattern = /(?:قیمت|مبلغ|تومان|ریال|price)[^\d۰-۹]{0,28}([\d۰-۹][\d۰-۹,٬،. ]{3,})/i;
-    const match = raw.match(pattern);
-    if (!match) return null;
-    const digits = match[1].replace(/[۰-۹]/g, (d) => "۰۱۲۳۴۵۶۷۸۹".indexOf(d)).replace(/[^0-9]/g, "");
-    const n = Number(digits);
-    return Number.isSafeInteger(n) && n >= 1000 && n <= 1000000000 ? n : null;
+  try { data = await response.json(); }
+  catch { throw new ApiError(502, "price_search_invalid_response", "پاسخ جستجوی وب قابل خواندن نبود."); }
+
+  const normalize = (value) => String(value || "")
+    .toLocaleLowerCase("fa")
+    .replace(/ي/g, "ی").replace(/ك/g, "ک").replace(/ۀ/g, "ه")
+    .replace(/[^\p{L}\p{N}]+/gu, " ").trim();
+  const productName = normalize(item.name);
+  const nameTokens = [...new Set(productName.split(" ").filter((word) => word.length >= 2 &&
+    !["برای", "غذای", "غذا", "قیمت", "منوی", "رستوران", "ویژه", "جدید"].includes(word)))];
+  const requiredMatches = nameTokens.length <= 2 ? 1 : 2;
+  const now = Date.now();
+  const maxAgeMs = 366 * 24 * 60 * 60 * 1000;
+
+  // فقط عددی را پیشنهاد بده که واحد پولی صریح داشته باشد؛ همهٔ پیشنهادها به تومان تبدیل می‌شوند.
+  const extractTomanPrice = (value) => {
+    const text = String(value || "")
+      .replace(/[۰-۹]/g, (d) => "۰۱۲۳۴۵۶۷۸۹".indexOf(d))
+      .replace(/ي/g, "ی").replace(/ك/g, "ک");
+    const re = /(\d[\d,\u066C\u060C\s]*(?:\.\d+)?)\s*(میلیارد|میلیون|هزار)?\s*(تومان|تومن|ریال|rial|toman|tomans)/gi;
+    let match;
+    while ((match = re.exec(text))) {
+      const numeric = Number(match[1].replace(/[,\u066C\u060C\s]/g, ""));
+      if (!Number.isFinite(numeric) || numeric <= 0) continue;
+      const magnitude = match[2] === "هزار" ? 1000 : match[2] === "میلیون" ? 1000000 : match[2] === "میلیارد" ? 1000000000 : 1;
+      const unit = String(match[3]).toLowerCase();
+      let toman = numeric * magnitude;
+      if (unit === "ریال" || unit === "rial") toman /= 10;
+      toman = Math.round(toman);
+      if (Number.isSafeInteger(toman) && toman >= 1000 && toman <= 100000000) return toman;
+    }
+    return null;
   };
-  const results = (Array.isArray(data.results) ? data.results : []).slice(0, 6).map((item) => {
-    const title = String(item.title || "منبع قیمت").slice(0, 180);
-    const url = (() => { try { const u = new URL(item.url); return u.protocol === "https:" ? u.toString() : ""; } catch { return ""; } })();
-    const snippet = String(item.content || "").replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F]/g, "").slice(0, 1000);
-    return { title, url, snippet, published_at: item.published_date || null, candidate_price: candidatePrice(title + " " + snippet) };
-  }).filter((item) => item.url);
-  await audit(env.DB, s.restaurantId, s.actor, "price_search.query", "menu_item", null, { query: searchQuery.slice(0, 120), result_count: results.length });
+
+  const rawResults = Array.isArray(data.results) ? data.results : [];
+  const results = rawResults.map((itemResult) => {
+    const title = String(itemResult.title || "منبع قیمت").slice(0, 180);
+    let url = "";
+    try { const u = new URL(itemResult.url); if (u.protocol === "https:") url = u.toString(); } catch {}
+    const snippet = String(itemResult.content || "").replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F]/g, "").slice(0, 1000);
+    const normalizedSource = normalize(title + " " + snippet);
+    const matches = nameTokens.filter((token) => normalizedSource.includes(token)).length;
+    const exactNameMatch = productName.length >= 3 && normalizedSource.includes(productName);
+    const publishedAt = itemResult.published_date || null;
+    const publishedMs = publishedAt ? Date.parse(publishedAt) : NaN;
+    const hasDate = Number.isFinite(publishedMs);
+    const recent = !hasDate || (publishedMs <= now + 24 * 60 * 60 * 1000 && now - publishedMs <= maxAgeMs);
+    const relevant = exactNameMatch || matches >= requiredMatches;
+    const price = hasDate && recent && relevant ? extractTomanPrice(title + " " + snippet) : null;
+    return {
+      title, url, snippet, published_at: hasDate ? new Date(publishedMs).toISOString() : null,
+      candidate_price: price, relevance: Math.max(0, Math.min(1, Number(itemResult.score) || 0)),
+      _matches: matches, _exact: exactNameMatch, _relevant: relevant, _recent: recent,
+    };
+  })
+    .filter((result) => result.url && result._relevant && result._recent)
+    .sort((a, b) => Number(b._exact) - Number(a._exact) || b._matches - a._matches || b.relevance - a.relevance)
+    .slice(0, 6)
+    .map(({ _matches, _exact, _relevant, _recent, ...result }) => result);
+
+  await audit(env.DB, s.restaurantId, s.actor, "price_search.query", "menu_item", item.id, {
+    query: searchQuery.slice(0, 160), result_count: results.length,
+  });
   return json({
     ok: true,
     query: searchQuery,
-    answer: typeof data.answer === "string" ? data.answer.slice(0, 1600) : "",
+    target_item: { id: item.id, name: item.name, current_price: Number(item.price) || 0, category: item.category_name || item.category_id },
+    answer: "",
     results,
-    warning: "قیمت‌های وب ممکن است مربوط به وزن، شهر، بسته‌بندی یا تاریخ متفاوت باشند. قبل از اعمال، منبع و جزئیات را بررسی کنید.",
+    warning: "فقط منابع مرتبط با نام غذا و نتایج حداکثر یک‌ساله نمایش داده می‌شوند. قیمت پیشنهادی فقط وقتی واحد تومان/ریال صریح باشد ارائه می‌شود؛ شهر، اندازه و تاریخ منبع را پیش از اعمال بررسی کن.",
     fetched_at: Date.now(),
   });
 });
