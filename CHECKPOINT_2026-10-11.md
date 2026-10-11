@@ -60,3 +60,13 @@ Then continue from the first unresolved issue with tests and small commits.
 
 
 - Latest 3D-customization follow-up: category option editor stores an optional third field `[label, price, visualEffect]`; backend validates the supported effect codes. The customer renderer maps codes by compatible model family to avoid treating a pickle as pepperoni in a pizza. Latest changed files passed static syntax parsing. These are feature-branch changes only.
+
+
+## Image storage provider switch — ImageKit (feature branch only)
+- User's ImageKit delivery URL established endpoint base: `https://ik.imagekit.io/amup8gp0i`. The given filename was `default-image.jpg`, so it is treated as a default/sample asset, not proof of a successful food-photo upload.
+- Panel Worker now uploads validated JPEG/PNG/WebP/AVIF files (max 5 MiB) to ImageKit's server-side Upload API using Basic auth from secret `IMAGEKIT_PRIVATE_KEY`. Endpoint is configured as non-secret `IMAGEKIT_URL_ENDPOINT=https://ik.imagekit.io/amup8gp0i`.
+- Added strict validation for public ImageKit URLs in the per-restaurant `/sepidar/{restaurantId}/` folder and a server-side HEAD/content-type check before accepting an image for the system `other` category.
+- Removed the R2 bucket binding from `worker/wrangler.jsonc`; health capability now depends on ImageKit endpoint + private-key secret. Old `/media/*` R2 URLs now return HTTP 410; new uploads return direct ImageKit URLs. Existing public/external image URLs for ordinary categories remain supported by the existing data flow.
+- Updated panel UI messages/placeholders from R2 to ImageKit.
+- **Not deployed or interactively tested.** Static JavaScript parsing passed, and the JSONC parses. The private key is not present in Git and has not been configured in Cloudflare. Before controlled preview, add Worker Secret `IMAGEKIT_PRIVATE_KEY`; then test actual upload, response URL, image display in panel/customer site, and `other` category save. Do not merge/deploy until verified.
+- Current ImageKit endpoint in `worker/wrangler.jsonc` is `https://ik.imagekit.io/amup8gp0i`; the default-image URL supplied during setup is not an uploaded asset to use as the restaurant's actual food photo.
