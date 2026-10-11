@@ -299,12 +299,27 @@ on("POST", "/api/panel/ai-search", "menu", async ({ request, env, s }) => {
   }
   await panelMutationLimit(env, s, "ai-price-search", 20, 60 * 60 * 1000);
   const b = await readJson(request, 2048);
-  const itemId = str(b.item_id, { min: 1, max: 80, field: "غذای ثبت‌شده" });
+  const itemId = str(b.item_id, { min: 1, max: 80, field: "شناسه غذای ثبت‌شده" });
+  const itemName = String(b.item_name || "").trim().slice(0, 120);
+  const categoryId = String(b.category_id || "").trim().slice(0, 40);
   const region = str(b.region || "ایران", { min: 2, max: 80, field: "شهر یا منطقه" });
-  const item = await env.DB.prepare(
-    "SELECT i.id, i.name, i.description, i.category_id, c.name AS category_name, i.price FROM menu_items i LEFT JOIN categories c ON c.restaurant_id = i.restaurant_id AND c.id = i.category_id WHERE i.restaurant_id = ? AND i.id = ? AND i.archived = 0 LIMIT 1"
+  const itemSelect = "SELECT i.id, i.name, i.description, i.category_id, c.name AS category_name, i.price FROM menu_items i LEFT JOIN categories c ON c.restaurant_id = i.restaurant_id AND c.id = i.category_id WHERE i.restaurant_id = ? AND ";
+  let item = await env.DB.prepare(
+    itemSelect + "i.id = ? AND i.archived = 0 LIMIT 1"
   ).bind(s.restaurantId, itemId).first();
-  if (!item) throw new ApiError(404, "menu_item_not_found", "غذای انتخاب‌شده در منوی فعلی پیدا نشد؛ منو را تازه‌سازی کن.");
+
+  // فهرست منو از D1 می‌آید؛ اگر شناسه‌ای که رابط کاربری فرستاد قدیمی/ناهمگام بود،
+  // فقط با نام و دسته دقیق و در همان رستوران دوباره پیدا می‌کنیم.
+  if (!item && itemName && categoryId) {
+    const matches = (await env.DB.prepare(
+      itemSelect + "i.name = ? AND i.category_id = ? AND i.archived = 0 ORDER BY i.active DESC, i.updated_at DESC LIMIT 2"
+    ).bind(s.restaurantId, itemName, categoryId).all()).results || [];
+    if (matches.length === 1) item = matches[0];
+    else if (matches.length > 1) {
+      throw new ApiError(409, "menu_item_ambiguous", "چند غذای هم‌نام در این دسته پیدا شد؛ منو را تازه‌سازی کن و غذای دقیق را دوباره انتخاب کن.");
+    }
+  }
+  if (!item) throw new ApiError(404, "menu_item_not_found", "غذای انتخاب‌شده با منوی ذخیره‌شده همگام نیست؛ منو را تازه‌سازی کن و دوباره انتخابش کن.");
 
   // جستجو باید دربارهٔ یک غذای واقعیِ ثبت‌شده باشد، نه عبارت کلی و مبهم.
   const searchQuery = '"' + String(item.name).slice(0, 80) + '" قیمت منوی رستوران ' + region + " ایران تومان";
