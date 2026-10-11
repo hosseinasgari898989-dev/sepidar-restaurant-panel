@@ -9,7 +9,7 @@ export default {
     el.innerHTML = html`
       <div class="view-h"><div><h2>مدیریت منو</h2><p>یک منوی مشترک: همان چیزی که مشتری در سایت سفارش می‌بیند</p></div>
         <div class="tools"><button class="btn ghost" data-newcat>🗂️ دسته جدید</button><button class="btn" data-new>＋ غذای جدید</button></div></div>
-      <div class="note-box">ℹ️ <span>تغییرات پس از ذخیره موفق در سرور، از مسیر عمومی منو برای سایت مشتریان قابل دریافت‌اند. ${ctx.capability("image_upload") && !ctx.demo ? "" : "R2 هنوز فعال نشده؛ در دسته‌های عادی می‌توان آدرس HTTPS عکس را وارد کرد، اما دسته «سایر» تا اتصال R2 فقط در حالت نمایشی قابل پیش‌نمایش است."}</span></div>
+      <div class="note-box">ℹ️ <span>تغییرات پس از ذخیره موفق در سرور، از مسیر عمومی منو برای سایت مشتریان قابل دریافت‌اند. ${ctx.capability("image_upload") && !ctx.demo ? "" : "ImageKit هنوز فعال نشده؛ در دسته‌های عادی می‌توان آدرس HTTPS عکس را وارد کرد، اما دسته «سایر» تا اتصال ImageKit فقط در حالت نمایشی قابل پیش‌نمایش است."}</span></div>
       <div class="tools" style="margin-bottom:10px"><label class="search"><span class="sr">جستجوی غذا</span><input id="q" type="search" placeholder="جستجوی غذا…" maxlength="60"></label></div>
       <div class="chips" id="cf"></div>
       <div id="mn">${skeleton(3, 180)}</div>`.s;
@@ -63,6 +63,15 @@ export default {
   },
 };
 
+function isImageKitFoodPhoto(value) {
+  try {
+    const u = new URL(String(value || ""));
+    if (u.protocol !== "https:" || u.hostname !== "ik.imagekit.io" || u.hash) return false;
+    if (!/^\/amup8gp0i\/sepidar\/[A-Za-z0-9_-]{1,40}\/[A-Za-z0-9_-]{20,90}\.(?:jpg|png|webp|avif)$/i.test(u.pathname)) return false;
+    const params = [...u.searchParams.entries()];
+    return !params.length || (params.length === 1 && params[0][0] === "updatedAt" && /^\d{1,16}$/.test(params[0][1]));
+  } catch { return false; }
+}
 // ---------------------------------------------------------------- ویرایش غذا
 function itemEditor(ctx, cats, item, onSaved, catId) {
   const isNew = !item;
@@ -80,7 +89,7 @@ function itemEditor(ctx, cats, item, onSaved, catId) {
         <label class="fld"><span>قیمت پایه <small>(تومان)</small></span><input name="price" value="${it.price === "" ? "" : F(it.price).replace(/٬/g, "")}" inputmode="numeric" required></label>
         <label class="fld"><span>ایموجی <small>(دسته‌های عادی بدون عکس، مدل سه‌بعدی دارند؛ «سایر» فقط عکس واقعی می‌پذیرد)</small></span><input name="emoji" value="${it.emoji}" maxlength="8"></label>
         <label class="fld full"><span>توضیحات</span><input name="description" value="${it.description}" maxlength="200"></label>
-        <label class="fld full"><span>آدرس عکس <small>(در صورت آپلود R2، خودکار پر می‌شود)</small></span><input name="image_url" value="${it.image_url}" maxlength="500" inputmode="url" dir="ltr" placeholder="https://…/media/main/…"></label>
+        <label class="fld full"><span>آدرس عکس <small>(بعد از آپلود در ImageKit خودکار پر می‌شود)</small></span><input name="image_url" value="${it.image_url}" maxlength="500" inputmode="url" dir="ltr" placeholder="https://ik.imagekit.io/amup8gp0i/sepidar/main/…"></label>
         <label class="fld full"><span>بارگذاری عکس محصول <small>JPEG / PNG / WebP / AVIF · حداکثر ۵ مگابایت</small></span><input name="image_file" type="file" accept="image/jpeg,image/png,image/webp,image/avif,.jpg,.jpeg,.png,.webp,.avif"></label>
         <small id="imageUploadHelp" class="mut full"></small><div class="full image-upload-actions"><button class="btn soft" type="button" id="uploadImage">📷 بارگذاری عکس</button><span class="mut" id="imageUploadStatus" aria-live="polite"></span></div>
         ${c.id === "other" ? html`<div class="note-box warn full">دسته «سایر» مدل سه‌بعدی خودکار ندارد؛ برای این دسته باید عکس واقعی محصول را بارگذاری کنی.</div>` : ""}
@@ -97,10 +106,10 @@ function itemEditor(ctx, cats, item, onSaved, catId) {
     const f = s.body.querySelector("#f");
     const uploadButton = s.body.querySelector("#uploadImage");
     const uploadHelp = s.body.querySelector("#imageUploadHelp");
-    uploadHelp.textContent = ctx.demo ? "حالت نمایشی: عکس فقط پیش‌نمایش محلی است و در سرور ذخیره نمی‌شود." : ctx.capability("image_upload") ? "پس از آپلود، عکس در R2 ذخیره و در منوی مشترک مشتری/مدیریت نمایش داده می‌شود." : "R2 هنوز در Cloudflare فعال نشده؛ آپلود واقعی تا زمان اتصال فضای ذخیره‌سازی در دسترس نیست.";
+    uploadHelp.textContent = ctx.demo ? "حالت نمایشی: عکس فقط پیش‌نمایش محلی است و در سرور ذخیره نمی‌شود." : ctx.capability("image_upload") ? "پس از آپلود، عکس در ImageKit ذخیره و در منوی مشترک مشتری/مدیریت نمایش داده می‌شود." : "ImageKit هنوز در Cloudflare فعال نشده؛ آپلود واقعی تا زمان اتصال فضای ذخیره‌سازی در دسترس نیست.";
     if (!ctx.demo && !ctx.capability("image_upload")) uploadButton.disabled = true;
     const sync = () => {
-      it.name = f.name.value; it.description = f.description.value; it.emoji = f.emoji.value || "🍽️"; it.image_url = f.image_url.value.trim(); it.price = f.price.value;
+      it.name = f.name.value; it.description = f.description.value; it.emoji = c.id === "other" ? "📷" : (f.querySelector('[name="emoji"]')?.value || "🍽️"); it.image_url = f.image_url.value.trim(); it.price = f.price.value;
       s.body.querySelector("#pvn").textContent = it.name || "نام غذا";
       s.body.querySelector("#pvd").textContent = it.description || "توضیح کوتاه";
       const p = parsePrice(it.price);
@@ -109,7 +118,7 @@ function itemEditor(ctx, cats, item, onSaved, catId) {
     };
     f.oninput = (e) => { if (e.target.name === "category_id") return; sync(); };
     f.image_url.onchange = () => { sync(); render(); };
-    f.category_id.onchange = () => { sync(); it.category_id = f.category_id.value; it.meta = { ...it.meta, s: {} }; it.removables = null; render(); };
+    f.category_id.onchange = () => { const next = f.category_id.value; sync(); it.category_id = next; if (next === "other") { it.emoji = "📷"; it.model_url = ""; it.meta = {}; it.removables = []; } else { it.meta = { ...it.meta, s: {} }; it.removables = null; if (it.emoji === "📷") it.emoji = "🍽️"; } render(); };
     s.body.querySelectorAll("[data-sw]").forEach((b) => (b.onclick = () => { it[b.dataset.sw] = !it[b.dataset.sw]; b.setAttribute("aria-checked", it[b.dataset.sw]); }));
     uploadButton.onclick = async () => {
       const file = f.querySelector('[name="image_file"]').files?.[0];
@@ -122,9 +131,9 @@ function itemEditor(ctx, cats, item, onSaved, catId) {
         reader.onerror = () => { status.textContent = "خواندن فایل عکس ناموفق بود."; };
         reader.readAsDataURL(file); return;
       }
-      if (!ctx.capability("image_upload")) { status.textContent = "برای آپلود واقعی باید R2 به Worker متصل شود."; return; }
+      if (!ctx.capability("image_upload")) { status.textContent = "برای آپلود واقعی باید ImageKit به Worker متصل شود."; return; }
       busy(uploadButton, async () => {
-        try { const out = await ctx.api.uploadImage(file); it.image_url = out.image_url; render(); s.body.querySelector("#imageUploadStatus").textContent = "عکس در R2 ذخیره شد."; }
+        try { const out = await ctx.api.uploadImage(file); it.image_url = out.image_url; render(); s.body.querySelector("#imageUploadStatus").textContent = "عکس در ImageKit ذخیره شد."; }
         catch (err) { const el = s.body.querySelector("#imageUploadStatus"); if (el) el.textContent = err.message || "آپلود عکس ناموفق بود."; }
       });
     };
@@ -134,11 +143,11 @@ function itemEditor(ctx, cats, item, onSaved, catId) {
       if (!it.name.trim()) return (fe.textContent = "نام غذا الزامی است.");
       if (!Number.isInteger(price) || price < 0) return (fe.textContent = "قیمت باید یک عدد صحیح (تومان) باشد.");
       if (it.image_url && !/^https?:\/\//i.test(it.image_url) && !(ctx.demo && it.image_url.startsWith("data:image/"))) return (fe.textContent = "آدرس عکس باید با https:// شروع شود.");
-      if (f.category_id.value === "other" && (!it.image_url || !it.image_url.includes("/media/")) && !ctx.demo) return (fe.textContent = "برای دسته «سایر» باید عکس واقعی را در R2 بارگذاری کنید.");
+      if (f.category_id.value === "other" && (!it.image_url || !isImageKitFoodPhoto(it.image_url)) && !ctx.demo) return (fe.textContent = "برای دسته «سایر» عکس واقعی را با دکمه «بارگذاری عکس» در ImageKit آپلود کن؛ نشانی ناقص یا قدیمی پذیرفته نیست.");
       const sdef = {};
       s.body.querySelectorAll("[data-def]").forEach((x) => { if (+x.value) sdef[x.dataset.def] = +x.value; });
       const removables = c.removables.length ? [...s.body.querySelectorAll("[data-rm]:checked")].map((x) => x.value) : null;
-      const body = { name: it.name.trim(), category_id: f.category_id.value, price, emoji: it.emoji, description: it.description.trim(), image_url: it.image_url || null, active: it.active, available: it.available, meta: { ...it.meta, s: sdef }, removables };
+      const body = { name: it.name.trim(), category_id: f.category_id.value, price, emoji: c.id === "other" ? "📷" : it.emoji, description: it.description.trim(), image_url: it.image_url || null, model_url: c.id === "other" ? null : (it.model_url || null), active: it.active, available: it.available, meta: c.id === "other" ? {} : { ...it.meta, s: sdef }, removables: c.id === "other" ? [] : removables };
       busy(s.body.querySelector("#sv"), async () => {
         try {
           isNew ? await ctx.api.createItem(body) : await ctx.api.updateItem(item.id, body);
@@ -164,9 +173,9 @@ function catEditor(ctx, cat, onSaved) {
   const collect = () => {
     const b = s.body;
     if (isNew) c.id = b.querySelector("[name=id]").value.trim().toLowerCase();
-    c.name = b.querySelector("[name=name]").value; c.emoji = b.querySelector("[name=emoji]").value;
+    c.name = b.querySelector("[name=name]").value; c.emoji = c.id === "other" ? "📷" : (b.querySelector("[name=emoji]")?.value || "🍽️");
     c.colors = [b.querySelector("[name=c1]").value, b.querySelector("[name=c2]").value];
-    c.options = [...b.querySelectorAll(".optg")].map((g) => ({ t: g.querySelector("[data-gt]").value, type: g.querySelector("[data-gy]").value, list: [...g.querySelectorAll(".optrow")].map((r) => [r.querySelector("[data-on]").value, r.querySelector("[data-op]").value]) }));
+    c.options = c.id === "other" ? [] : [...b.querySelectorAll(".optg")].map((g) => ({ t: g.querySelector("[data-gt]").value, type: g.querySelector("[data-gy]").value, list: [...g.querySelectorAll(".optrow")].map((r) => [r.querySelector("[data-on]").value, r.querySelector("[data-op]").value, r.querySelector("[data-visual]")?.value || ""]) }));
   };
   const render = () => {
     s.set(html`
@@ -213,7 +222,7 @@ function catEditor(ctx, cat, onSaved) {
         if (list.some((o) => !Number.isInteger(o[1]))) return (fe.textContent = `قیمت‌های گروه «${g.t}» باید عدد صحیح باشند.`);
         options.push({ t: g.t.trim(), type: g.type, list });
       }
-      const body = { name: c.name.trim(), emoji: c.emoji || "🍽️", colors: c.colors, options, removables: c.removables };
+      const body = { name: c.id === "other" ? "سایر" : c.name.trim(), emoji: c.id === "other" ? "📷" : (c.emoji || "🍽️"), colors: c.colors, options: c.id === "other" ? [] : options, removables: c.id === "other" ? [] : c.removables };
       return busy(b, async () => {
         try { isNew ? await ctx.api.createCategory({ id: c.id, ...body }) : await ctx.api.updateCategory(cat.id, body); toast("دسته ذخیره شد"); s.close(); onSaved(); }
         catch (err) { fe.textContent = err.message; }
