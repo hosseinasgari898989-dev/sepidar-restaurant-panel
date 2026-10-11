@@ -994,3 +994,20 @@ body[data-theme="dark"] .sp-select-trigger,body[data-theme="dark"] .sp-select-me
 .price-search-apply{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-top:10px;padding-top:9px;border-top:1px dashed var(--line)}
 .price-search-apply strong{color:var(--or-ink);font-variant-numeric:tabular-nums}
 @media(max-width:520px){.price-search-fields{grid-template-columns:1fr}.price-search-fields>.btn{width:100%}.price-search-apply .btn{flex:1}}
+
+
+/* انتخاب اثر سه‌بعدی در ویرایش گروه‌های شخصی‌سازی */
+.optrow{grid-template-columns:minmax(0,1fr) 104px minmax(155px,190px) auto}
+.optrow .sp-select{min-width:0}
+.optrow .sp-select-trigger{min-height:40px;padding:7px 8px;font-size:12px;gap:5px}
+.optrow .sp-select-value{white-space:normal;line-height:1.45}
+.optrow [data-op]{text-align:center}
+.optg .optrow [data-ov]{max-width:100%}
+@media(max-width:620px){
+ .optrow{grid-template-columns:minmax(0,1fr) 82px auto;gap:6px}
+ .optrow [data-on]{grid-column:1/-1}
+ .optrow [data-op]{grid-column:1/2}
+ .optrow .sp-select{grid-column:2/3}
+ .optrow [data-do]{grid-column:3/4;grid-row:2}
+ .optrow .sp-select-trigger{min-height:42px;font-size:11.5px;padding:6px}
+}
