@@ -1,7 +1,7 @@
 import { ApiError, json, readJson } from "../lib/http.js";
 import { requireSession, assertSameOrigin, login, logout, audit } from "../lib/auth.js";
 import { loadMenu, itemOut, validateOptions, validateRemovables } from "../lib/menu.js";
-import { str, int, bool, oneOf, httpUrl, color, parseJson, tehranDayStart, DAY_MS, TEHRAN_OFFSET_MS, randomId } from "../lib/util.js";
+import { str, int, bool, oneOf, httpUrl, color, parseJson, tehranDayStart, DAY_MS, TEHRAN_OFFSET_MS, randomId, sha256Hex } from "../lib/util.js";
 
 export const ORDER_STATUSES = ["new", "preparing", "ready", "delivered", "cancelled"];
 // قواعد مجاز تغییر وضعیت؛ فقط سرور تصمیم می‌گیرد
@@ -37,7 +37,7 @@ on("POST", "/api/panel/auth/logout", "auth", async ({ request, env }) => json({ 
 on("POST", "/api/panel/auth/logout-all", "auth", async ({ request, env }) => json({ ok: true }, 200, { setCookie: await logout(request, env, true) }));
 on("GET", "/api/panel/session", "restaurant", async ({ env, s }) => {
   const r = await env.DB.prepare("SELECT id, name, status, accepting_orders FROM restaurants WHERE id = ?").bind(s.restaurantId).first();
-  return json({ ok: true, session: { role: s.role, permissions: s.permissions, expires_at: s.expiresAt, bootstrap: s.role === "platform_admin", restaurant: r } });
+  return json({ ok: true, session: { role: s.role, permissions: s.permissions, expires_at: s.expiresAt, bootstrap: s.bootstrap, restaurant: r } });
 });
 
 // ---------- داشبورد ----------
@@ -336,6 +336,54 @@ on("PATCH", "/api/panel/settings", "settings", async ({ request, env, s }) => {
   const r = await env.DB.prepare("SELECT * FROM restaurants WHERE id = ?").bind(s.restaurantId).first();
   return json({ ok: true, restaurant: { ...r, accepting_orders: !!r.accepting_orders } });
 });
+
+// ---------- مدیریت توکن‌های ورود (فقط مدیر سپیدار) ----------
+on("GET", "/api/panel/access-tokens", "platform_settings", async ({ env, s }) => {
+  const rows = (await env.DB.prepare("SELECT id, token_prefix, label, role, created_at, expires_at, revoked_at, last_used_at FROM access_tokens WHERE restaurant_id = ? ORDER BY created_at DESC LIMIT 100")
+    .bind(s.restaurantId).all()).results;
+  return json({ ok: true, tokens: rows.map((row) => ({ ...row, is_current: row.id === s.accessTokenId })) });
+});
+
+on("POST", "/api/panel/access-tokens", "platform_settings", async ({ request, env, s }) => {
+  const b = await readJson(request, 4096);
+  const label = str(b.label, { max: 80, min: 2, field: "نام توکن" });
+  const role = oneOf(b.role, ["platform_admin", "owner"], "نوع دسترسی");
+  const duration = oneOf(b.duration, ["1h", "1d", "1y", "never"], "مدت اعتبار");
+  const now = Date.now();
+  const expiresAt = duration === "never" ? null : now + ({
+    "1h": 60 * 60 * 1000,
+    "1d": 24 * 60 * 60 * 1000,
+    "1y": 365 * 24 * 60 * 60 * 1000,
+  })[duration];
+  const active = await env.DB.prepare("SELECT COUNT(*) AS n FROM access_tokens WHERE restaurant_id = ? AND revoked_at IS NULL AND (expires_at IS NULL OR expires_at > ?)")
+    .bind(s.restaurantId, now).first();
+  if ((active?.n || 0) >= 100) throw new ApiError(429, "token_limit", "حداکثر ۱۰۰ توکن فعال مجاز است؛ ابتدا یکی از توکن‌ها را لغو کنید.");
+
+  // مقدار خام فقط همین یک بار به پنل برگردانده می‌شود؛ در D1 فقط هش ذخیره می‌گردد.
+  const token = "spd_" + randomId(32);
+  const id = randomId(12);
+  const prefix = token.slice(0, 12);
+  await env.DB.prepare("INSERT INTO access_tokens (id, token_hash, token_prefix, label, restaurant_id, role, created_at, expires_at, created_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)")
+    .bind(id, await sha256Hex(token), prefix, label, s.restaurantId, role, now, expiresAt, s.actor).run();
+  await audit(env.DB, s.restaurantId, s.actor, "access_token.create", "access_token", id, { label, role, duration, token_prefix: prefix, expires_at: expiresAt });
+  return json({ ok: true, token: { id, token, token_prefix: prefix, label, role, created_at: now, expires_at: expiresAt, revoked_at: null, last_used_at: null, is_current: false } });
+});
+
+on("DELETE", "/api/panel/access-tokens/:id", "platform_settings", async ({ env, s, p }) => {
+  const target = await env.DB.prepare("SELECT id, label, role, revoked_at FROM access_tokens WHERE id = ? AND restaurant_id = ?")
+    .bind(p.id, s.restaurantId).first();
+  if (!target) throw new ApiError(404, "not_found", "توکن پیدا نشد.");
+  if (s.accessTokenId === target.id) throw new ApiError(409, "current_token", "این توکن برای نشست فعلی استفاده شده؛ ابتدا با توکن دیگری وارد شوید و سپس آن را لغو کنید.");
+  if (target.revoked_at) return json({ ok: true, already_revoked: true });
+  const now = Date.now();
+  await env.DB.prepare("UPDATE access_tokens SET revoked_at = ? WHERE id = ? AND restaurant_id = ? AND revoked_at IS NULL")
+    .bind(now, target.id, s.restaurantId).run();
+  await env.DB.prepare("UPDATE sessions SET revoked_at = ? WHERE access_token_id = ? AND revoked_at IS NULL")
+    .bind(now, target.id).run();
+  await audit(env.DB, s.restaurantId, s.actor, "access_token.revoke", "access_token", target.id, { label: target.label, role: target.role });
+  return json({ ok: true });
+});
+
 on("GET", "/api/panel/qr", "restaurant", async ({ env, s }) => {
   const base = env.PUBLIC_SITE_URL;
   if (!base) return json({ ok: true, configured: false, reason: "public_site_url_missing", restaurant_id: s.restaurantId });
