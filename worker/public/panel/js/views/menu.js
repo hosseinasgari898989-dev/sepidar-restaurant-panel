@@ -26,8 +26,15 @@ export default {
       shown.forEach((c) => {
         const items = c.items.filter((i) => !q || (i.name + i.description).includes(q));
         if (q && !items.length) return;
-        out += html`<div class="cat-head"><h3>${c.emoji} ${c.name}</h3>${c.id === "other" ? html`<span class="badge">📷 عکس واقعی الزامی · بدون مدل سه‌بعدی</span>` : ""}<span class="mut num" style="font-size:13px">${F(c.items.length)} غذا · ${F(c.options.length)} گروه شخصی‌سازی</span><span class="sp"></span><button class="btn sm ghost" data-ec="${c.id}">✏️ دسته و گزینه‌ها</button><button class="btn sm soft" data-new="${c.id}">＋ غذا</button></div>
-          ${items.length ? html`<div class="mgrid">${items.map((i) => card(c, i))}</div>` : empty("🍽️", "این دسته هنوز غذایی ندارد", "با «＋ غذا» اولین غذا را اضافه کنید.")}`.s;
+        out += html`<section class="cat-section"><div class="cat-head">
+          <div class="cat-head-main">
+            <div class="cat-title-row"><h3>${c.emoji} ${c.name}</h3>${c.id === "other" ? html`<span class="badge photo-only-badge">📷 فقط عکس واقعی</span>` : ""}</div>
+            <span class="mut num cat-count">${F(c.items.length)} غذا · ${F(c.options.length)} گروه شخصی‌سازی</span>
+          </div>
+          <div class="cat-head-actions"><button class="btn sm ghost" data-ec="${c.id}">✏️ دسته و گزینه‌ها</button><button class="btn sm soft" data-new="${c.id}">＋ غذا</button></div>
+        </div>
+        ${items.length ? html`<div class="mgrid">${items.map((i) => card(c, i))}</div>` : empty("🍽️", "این دسته هنوز غذایی ندارد", "با «＋ غذا» اولین غذا را اضافه کنید.")}
+        </section>`.s;
       });
       mn.innerHTML = out || (cats.length ? empty("🔎", "غذایی پیدا نشد") : empty("🗂️", "منو خالی است", "ابتدا یک دسته بسازید.")).s;
     }
