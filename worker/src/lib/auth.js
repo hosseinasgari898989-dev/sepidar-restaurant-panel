@@ -72,10 +72,15 @@ export async function login(request, env) {
   }
   assertSameOrigin(request, env);
   const db = env.DB;
-  const body = await readJson(request, 2048);
-  const key = await deviceKey(body);
-  await checkLimit(db, key, LOGIN_LIMIT);
+  // Apply the global backstop before validating the supplied device ID so malformed requests cannot bypass throttling.
   await checkLimit(db, "login:global", GLOBAL_LIMIT);
+  let body;
+  try { body = await readJson(request, 2048); }
+  catch (err) { await hit(db, "login:global", GLOBAL_LIMIT); throw err; }
+  let key;
+  try { key = await deviceKey(body); }
+  catch (err) { await hit(db, "login:global", GLOBAL_LIMIT); throw err; }
+  await checkLimit(db, key, LOGIN_LIMIT);
 
   const token = typeof body.token === "string" ? body.token.trim() : "";
   const tokenWellFormed = token.length > 0 && token.length <= 256;
