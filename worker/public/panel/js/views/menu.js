@@ -5,7 +5,7 @@ const parsePrice = (v) => { const n = Number(toEnDigits(String(v)).replace(/[,\s
 export default {
   id: "menu", title: "منو و غذاها", short: "منو", icon: "🍔", perm: "menu",
   render(el, ctx) {
-    let cats = [], cat = "all", selectedPriceItemId = "", lastPriceSearchItemId = "";
+    let cats = [], cat = "all", q = "", selectedPriceItemId = "", lastPriceSearchItemId = "", lastPriceSearchTargetId = "";
     el.innerHTML = html`
       <div class="view-h"><div><h2>مدیریت منو</h2><p>یک منوی مشترک: همان چیزی که مشتری در سایت سفارش می‌بیند</p></div>
         <div class="tools"><button class="btn ghost" data-newcat>🗂️ دسته جدید</button><button class="btn" data-new>＋ غذای جدید</button></div></div>
@@ -23,6 +23,7 @@ export default {
         <p class="price-search-hint">نتایج قدیمی و نامرتبط فیلتر می‌شوند. قیمت پیشنهادی فقط وقتی واحد پول مشخص باشد نشان داده می‌شود؛ هیچ قیمتی بدون تأیید تو ذخیره نمی‌شود.</p>
         <div id="priceSearchResults" aria-live="polite"></div>
       </section>
+      <div class="tools menu-search-tools" style="margin:10px 0"><label class="search"><span class="sr">جستجوی غذا در منو</span><input id="q" type="search" placeholder="جستجوی غذا در منو…" maxlength="60"></label></div>
       <div class="chips" id="cf"></div>
       <div id="mn">${skeleton(3, 180)}</div>`.s;
     const mn = el.querySelector("#mn");
@@ -38,7 +39,7 @@ export default {
       if (!allItems.some(({ item }) => item.id === selectedPriceItemId)) selectedPriceItemId = allItems[0]?.item.id || "";
       select.innerHTML = [
         html`<option value="">غذای موردنظر را انتخاب کن…</option>`.s,
-        ...allItems.map(({ category, item }) => html`<option value="${item.id}" ${item.id === selectedPriceItemId ? "selected" : ""}>${category.name} · ${item.name} — ${money(item.price)} تومان</option>`.s),
+        ...allItems.map(({ category, item }) => html`<option value="${item.id}" ${item.id === selectedPriceItemId ? "selected" : ""}>${category.name} · ${item.name} — ${money(item.price)}</option>`.s),
       ].join("");
       select.value = selectedPriceItemId;
       select.disabled = allItems.length === 0;
@@ -49,7 +50,7 @@ export default {
       if (customTrigger) customTrigger.disabled = allItems.length === 0;
       el.querySelector("#priceSearchRun").disabled = allItems.length === 0;
       const current = allItems.find(({ item }) => item.id === selectedPriceItemId)?.item;
-      el.querySelector("#priceSearchCurrentPrice").textContent = current ? `قیمت فعلی در سپیدار: ${money(current.price)} تومان` : "برای جستجو ابتدا یک غذا به منو اضافه کن.";
+      el.querySelector("#priceSearchCurrentPrice").textContent = current ? `قیمت فعلی در سپیدار: ${money(current.price)}` : "برای جستجو ابتدا یک غذا به منو اضافه کن.";
     }
     function draw() {
       drawPricePicker();
@@ -57,7 +58,8 @@ export default {
       const shown = cats.filter((c) => cat === "all" || c.id === cat);
       let out = "";
       shown.forEach((c) => {
-        const items = c.items;
+        const items = c.items.filter((i) => !q || (i.name + " " + i.description).toLocaleLowerCase("fa").includes(q.toLocaleLowerCase("fa")));
+        if (q && !items.length) return;
         out += html`<section class="cat-section"><div class="cat-head">
           <div class="cat-head-main">
             <div class="cat-title-row"><h3>${c.emoji} ${c.name}</h3>${c.id === "other" ? html`<span class="badge photo-only-badge">📷 فقط عکس واقعی</span>` : ""}</div>
@@ -100,23 +102,25 @@ export default {
     const priceSearchRegion = el.querySelector("#priceSearchRegion");
     const priceSearchRun = el.querySelector("#priceSearchRun");
     const priceSearchResults = el.querySelector("#priceSearchResults");
-    priceSearchItem.onchange = () => { selectedPriceItemId = priceSearchItem.value; lastPriceSearchItemId = ""; priceSearchResults.innerHTML = ""; drawPricePicker(); };
+    priceSearchItem.onchange = () => { selectedPriceItemId = priceSearchItem.value; lastPriceSearchItemId = ""; lastPriceSearchTargetId = ""; priceSearchResults.innerHTML = ""; drawPricePicker(); };
     priceSearchRun.onclick = async () => {
       const selected = cats.flatMap((category) => category.items.map((item) => ({ category, item }))).find(({ item }) => item.id === priceSearchItem.value);
       if (!selected) { priceSearchResults.innerHTML = html`<div class="note-box warn">ابتدا یکی از غذاهای ثبت‌شده را انتخاب کن.</div>`.s; return; }
       if (ctx.demo) { priceSearchResults.innerHTML = html`<div class="note-box warn">در حالت نمایشی، جستجوی زنده فعال نیست.</div>`.s; return; }
       selectedPriceItemId = selected.item.id;
       lastPriceSearchItemId = selected.item.id;
+      lastPriceSearchTargetId = "";
       const region = String(priceSearchRegion.value || "").trim() || "ایران";
       busy(priceSearchRun, async () => {
         priceSearchResults.innerHTML = html`<div class="price-search-loading">🔎 در حال جستجوی «${selected.item.name}» در منابع تازهٔ وب…</div>`.s;
         try {
-          const result = await ctx.api.searchPrices({ item_id: selected.item.id, region });
+          const result = await ctx.api.searchPrices({ item_id: selected.item.id, item_name: selected.item.name, category_id: selected.category.id, region });
+          lastPriceSearchTargetId = String(result.target_item?.id || selected.item.id);
           const results = Array.isArray(result.results) ? result.results : [];
           priceSearchResults.innerHTML = html`
             <div class="price-search-summary">
               <b>نتیجه برای «${result.target_item?.name || selected.item.name}»</b>
-              <span>قیمت فعلی سپیدار: ${money(result.target_item?.current_price ?? selected.item.price)} تومان</span>
+              <span>قیمت فعلی سپیدار: ${money(result.target_item?.current_price ?? selected.item.price)}</span>
               <small>عبارت جستجو: <span dir="auto">${result.query || selected.item.name}</span></small>
             </div>
             <div class="price-search-warning">${result.warning || "منبع، شهر، تاریخ و واحد پول را پیش از هر تغییری بررسی کن."}</div>
@@ -125,7 +129,7 @@ export default {
               <small>${source.published_at ? "تاریخ منبع: " + new Date(source.published_at).toLocaleDateString("fa-IR") : "تاریخ انتشار مشخص نیست"}</small>
               <p>${source.snippet || "برای جزئیات، منبع را باز کن."}</p>
               <div class="price-search-apply">
-                ${source.candidate_price ? html`<strong>${money(source.candidate_price)} تومان</strong><button type="button" class="btn sm" data-apply-price="${source.candidate_price}" data-apply-item="${selected.item.id}">اعمال به این غذا</button>` : html`<span class="mut price-search-no-price">قیمت قابل‌اعتماد با واحد مشخص از این منبع استخراج نشد.</span>`}
+                ${source.candidate_price ? html`<strong>${money(source.candidate_price)} تومان</strong><button type="button" class="btn sm" data-apply-price="${source.candidate_price}" data-apply-item="${result.target_item?.id || selected.item.id}" data-selected-item="${selected.item.id}">اعمال به این غذا</button>` : html`<span class="mut price-search-no-price">قیمت قابل‌اعتماد با واحد مشخص از این منبع استخراج نشد.</span>`}
               </div>
             </article>`).join("") : html`<div class="price-search-empty"><b>منبع مرتبط و به‌روز پیدا نشد.</b><p>این بهتر از نمایش قیمت نامرتبط است. نام دقیق‌تر، شهر دیگری یا غذای مشابهی را انتخاب کن.</p></div>`}
             <small class="mut price-search-time">زمان جستجو: ${new Date(result.fetched_at || Date.now()).toLocaleString("fa-IR", { timeZone: "Asia/Tehran", hour: "2-digit", minute: "2-digit" })}</small>
@@ -138,16 +142,22 @@ export default {
     priceSearchResults.onclick = async (event) => {
       const button = event.target.closest("[data-apply-price]");
       if (!button) return;
-      const itemId = button.dataset.applyItem;
-      const current = cats.flatMap((category) => category.items).find((item) => item.id === itemId);
+      const targetItemId = button.dataset.applyItem;
+      const selectedId = button.dataset.selectedItem;
+      const current = cats.flatMap((category) => category.items).find((item) => item.id === selectedId);
       const price = Number(button.dataset.applyPrice);
-      if (!current || itemId !== lastPriceSearchItemId || !Number.isSafeInteger(price) || price < 1000) { toast("این پیشنهاد دیگر معتبر نیست؛ دوباره جستجو کن.", "err"); return; }
+      if (!current || selectedId !== selectedPriceItemId || selectedId !== lastPriceSearchItemId || targetItemId !== lastPriceSearchTargetId || !Number.isSafeInteger(price) || price < 1000) { toast("این پیشنهاد دیگر معتبر نیست؛ دوباره جستجو کن.", "err"); return; }
       const source = button.closest("[data-source-title]")?.dataset.sourceTitle || "منبع وب";
       if (!(await confirmBox({ title: "اعمال قیمت پیشنهادی؟", text: `قیمت ${money(price)} تومان از «${source}» برای «${current.name}» جایگزین قیمت فعلی ${money(current.price)} تومان شود؟ قبل از تأیید، واحد و جزئیات منبع را بررسی کن.`, ok: "اعمال قیمت", danger: false }))) return;
       busy(button, async () => {
-        try { await ctx.api.updateItem(current.id, { price }); current.price = price; draw(); toast(`قیمت «${current.name}» به‌روزرسانی شد.`); }
+        try { await ctx.api.updateItem(targetItemId, { price }); current.price = price; draw(); toast(`قیمت «${current.name}» به‌روزرسانی شد.`); }
         catch (err) { toast(err.message || "ذخیرهٔ قیمت ناموفق بود.", "err"); }
       });
+    };
+    let tm;
+    el.querySelector("#q").oninput = (event) => {
+      clearTimeout(tm);
+      tm = setTimeout(() => { q = String(event.target.value || "").trim(); draw(); }, 120);
     };
     load();
   },
