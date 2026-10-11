@@ -2,6 +2,7 @@ import { ApiError, json, readJson } from "../lib/http.js";
 import { requireSession, assertSameOrigin, login, logout, audit } from "../lib/auth.js";
 import { loadMenu, itemOut, validateOptions, validateRemovables } from "../lib/menu.js";
 import { str, int, bool, oneOf, httpUrl, color, parseJson, tehranDayStart, DAY_MS, TEHRAN_OFFSET_MS, randomId, sha256Hex } from "../lib/util.js";
+import { checkLimit, hit } from "../lib/ratelimit.js";
 
 export const ORDER_STATUSES = ["new", "preparing", "ready", "delivered", "cancelled"];
 // قواعد مجاز تغییر وضعیت؛ فقط سرور تصمیم می‌گیرد
@@ -27,6 +28,32 @@ function orderOut(o, lines) {
 
 const routes = [];
 const on = (method, pattern, perm, handler) => routes.push({ method, re: new RegExp("^" + pattern.replace(/:(\w+)/g, "(?<$1>[^/]+)") + "$"), perm, handler });
+
+async function panelMutationLimit(env, session, scope = "mutations", limit = 100, windowMs = 5 * 60 * 1000) {
+  const key = "panel:" + scope + ":" + (await sha256Hex(session.idHash + ":" + scope)).slice(0, 36);
+  const policy = { limit, windowMs };
+  await checkLimit(env.DB, key, policy);
+  await hit(env.DB, key, policy);
+}
+
+async function restaurantCreateLimit(env, session, scope, limit, windowMs) {
+  const key = "panel:restaurant:" + scope + ":" + (await sha256Hex(session.restaurantId + ":" + scope)).slice(0, 36);
+  const policy = { limit, windowMs };
+  await checkLimit(env.DB, key, policy);
+  await hit(env.DB, key, policy);
+}
+
+function validImageSignature(bytes, type) {
+  const b = [...bytes];
+  if (type === "image/png") return b.slice(0, 8).join(",") === "137,80,78,71,13,10,26,10";
+  if (type === "image/jpeg") return b[0] === 255 && b[1] === 216 && b[2] === 255;
+  if (type === "image/webp") return String.fromCharCode(...b.slice(0, 4)) === "RIFF" && String.fromCharCode(...b.slice(8, 12)) === "WEBP";
+  if (type === "image/avif") {
+    const brand = String.fromCharCode(...b.slice(8, 12));
+    return String.fromCharCode(...b.slice(4, 8)) === "ftyp" && ["avif", "avis"].includes(brand);
+  }
+  return false;
+}
 
 // ---------- احراز هویت ----------
 on("POST", "/api/panel/auth/login", null, async ({ request, env }) => {
@@ -119,6 +146,36 @@ on("POST", "/api/panel/orders/:id/status", "orders", async ({ request, env, s, p
 });
 
 // ---------- منو ----------
+// بارگذاری عکس واقعی غذا روی R2؛ فقط کاربران احراز هویت‌شده با مجوز منو.
+on("POST", "/api/panel/menu/images", "menu", async ({ request, env, url, s }) => {
+  if (!env.FOOD_IMAGES) throw new ApiError(503, "image_storage_unavailable", "فضای ذخیره‌سازی عکس (R2) هنوز برای این Worker فعال نشده است.");
+  const policy = { limit: 10, windowMs: 60 * 60 * 1000 };
+  const keyHash = await sha256Hex("panel:image-upload:" + s.idHash);
+  const key = "panel:image-upload:" + keyHash.slice(0, 36);
+  await checkLimit(env.DB, key, policy);
+  const length = Number(request.headers.get("Content-Length") || 0);
+  if (length > 5 * 1024 * 1024 + 64 * 1024) throw new ApiError(413, "image_too_large", "حجم هر عکس حداکثر ۵ مگابایت است.");
+  if (!(request.headers.get("Content-Type") || "").toLowerCase().startsWith("multipart/form-data")) throw new ApiError(415, "unsupported_media_type", "عکس باید از طریق فرم بارگذاری ارسال شود.");
+  const form = await request.formData();
+  const file = form.get("file");
+  if (!file || typeof file.arrayBuffer !== "function" || typeof file.size !== "number") throw new ApiError(422, "image_required", "ابتدا یک فایل عکس انتخاب کنید.");
+  if (file.size < 16 || file.size > 5 * 1024 * 1024) throw new ApiError(413, "image_too_large", "حجم عکس باید بین ۱۶ بایت و ۵ مگابایت باشد.");
+  const type = String(file.type || "").toLowerCase();
+  const ext = ({ "image/jpeg": "jpg", "image/png": "png", "image/webp": "webp", "image/avif": "avif" })[type];
+  if (!ext) throw new ApiError(415, "invalid_image_type", "فقط JPEG، PNG، WebP یا AVIF مجاز است؛ SVG و فایل‌های اجرایی پذیرفته نمی‌شوند.");
+  const header = new Uint8Array(await file.slice(0, 16).arrayBuffer());
+  if (!validImageSignature(header, type)) throw new ApiError(415, "invalid_image_signature", "محتوای فایل با نوع عکس اعلام‌شده سازگار نیست.");
+  await hit(env.DB, key, policy);
+  const objectKey = `${s.restaurantId}/${randomId(18)}.${ext}`;
+  await env.FOOD_IMAGES.put(objectKey, file, {
+    httpMetadata: { contentType: type, cacheControl: "public, max-age=31536000, immutable" },
+    customMetadata: { restaurant_id: s.restaurantId, uploaded_by: s.actor, uploaded_at: String(Date.now()) },
+  });
+  const imageUrl = url.origin + "/media/" + objectKey.split("/").map(encodeURIComponent).join("/");
+  await audit(env.DB, s.restaurantId, s.actor, "menu.image_upload", "image", objectKey, { type, size: file.size });
+  return json({ ok: true, image_url: imageUrl, key: objectKey, type, size: file.size }, 201);
+});
+
 on("GET", "/api/panel/menu", "menu", async ({ env, s }) => json({ ok: true, categories: await loadMenu(env.DB, s.restaurantId, { includeInactive: true }) }));
 
 function catFields(b, partial) {
@@ -153,6 +210,7 @@ on("POST", "/api/panel/menu/categories", "menu", async ({ request, env, s }) => 
 on("PATCH", "/api/panel/menu/categories/:id", "menu", async ({ request, env, s, p }) => {
   const b = await readJson(request);
   const f = catFields(b, true);
+  if (p.id === "other" && "name" in f && f.name !== "سایر") throw new ApiError(409, "reserved_category", "نام دسته «سایر» برای رفتار ویژه‌ی محصولات تصویری ثابت است؛ برای نام دیگر «دسته جدید» بسازید.");
   const keys = Object.keys(f);
   if (!keys.length) throw new ApiError(422, "validation_error", "تغییری ارسال نشده است.");
   const r = await env.DB.prepare(`UPDATE categories SET ${keys.map((k) => `${k} = ?`).join(", ")}, updated_at = ? WHERE restaurant_id = ? AND id = ?`)
@@ -163,6 +221,7 @@ on("PATCH", "/api/panel/menu/categories/:id", "menu", async ({ request, env, s, 
 });
 
 on("DELETE", "/api/panel/menu/categories/:id", "menu", async ({ request, env, s, p }) => {
+  if (p.id === "other") throw new ApiError(409, "reserved_category", "دسته‌ی «سایر» سیستمی است و قابل حذف نیست.");
   const n = await env.DB.prepare("SELECT COUNT(*) n FROM menu_items WHERE restaurant_id = ? AND category_id = ? AND archived = 0").bind(s.restaurantId, p.id).first();
   if (n.n) throw new ApiError(409, "category_not_empty", "این دسته هنوز غذا دارد. ابتدا غذاها را جابه‌جا یا حذف کنید.");
   const r = await env.DB.prepare("DELETE FROM categories WHERE restaurant_id = ? AND id = ?").bind(s.restaurantId, p.id).run();
@@ -207,6 +266,8 @@ async function itemFields(env, s, b, partial) {
 on("POST", "/api/panel/menu/items", "menu", async ({ request, env, s }) => {
   const b = await readJson(request);
   const f = await itemFields(env, s, b, false);
+  if (f.category_id === "other" && (!f.image_url || !f.image_url.includes("/media/"))) throw new ApiError(422, "image_required_for_other", "برای دسته «سایر» باید عکس واقعی محصول را با آپلود R2 بارگذاری کنید.");
+  await restaurantCreateLimit(env, s, "menu-item-create", 100, DAY_MS);
   const id = f.category_id + "-" + randomId(6).toLowerCase().replace(/[^a-z0-9]/g, "x");
   const max = await env.DB.prepare("SELECT COALESCE(MAX(sort), -1) m FROM menu_items WHERE restaurant_id = ? AND category_id = ?").bind(s.restaurantId, f.category_id).first();
   await env.DB.prepare("INSERT INTO menu_items (id, restaurant_id, category_id, name, description, price, emoji, image_url, model_url, meta, removables, active, available, sort, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
@@ -221,6 +282,9 @@ on("PATCH", "/api/panel/menu/items/:id", "menu", async ({ request, env, s, p }) 
   const before = await env.DB.prepare("SELECT * FROM menu_items WHERE id = ? AND restaurant_id = ? AND archived = 0").bind(p.id, s.restaurantId).first();
   if (!before) throw new ApiError(404, "not_found", "غذا پیدا نشد.");
   const f = await itemFields(env, s, b, true);
+  const finalCategoryId = f.category_id || before.category_id;
+  const finalImageUrl = Object.prototype.hasOwnProperty.call(f, "image_url") ? f.image_url : before.image_url;
+  if (finalCategoryId === "other" && (!finalImageUrl || !finalImageUrl.includes("/media/"))) throw new ApiError(422, "image_required_for_other", "برای دسته «سایر» باید عکس واقعی محصول را با آپلود R2 بارگذاری کنید.");
   const keys = Object.keys(f);
   if (!keys.length) throw new ApiError(422, "validation_error", "تغییری ارسال نشده است.");
   await env.DB.prepare(`UPDATE menu_items SET ${keys.map((k) => `${k} = ?`).join(", ")}, updated_at = ? WHERE id = ? AND restaurant_id = ?`)
@@ -244,16 +308,20 @@ on("DELETE", "/api/panel/menu/items/:id", "menu", async ({ env, s, p }) => {
 
 // ---------- نظرات ----------
 on("GET", "/api/panel/reviews", "reviews", async ({ env, s, url }) => {
-  const where = ["restaurant_id = ?"], args = [s.restaurantId];
+  const where = ["r.restaurant_id = ?"], args = [s.restaurantId];
   const rating = url.searchParams.get("rating");
-  if (rating && rating !== "all") { where.push("rating = ?"); args.push(int(rating, { min: 1, max: 5 })); }
+  if (rating && rating !== "all") { where.push("r.rating = ?"); args.push(int(rating, { min: 1, max: 5 })); }
   const vis = url.searchParams.get("visibility");
-  if (vis && vis !== "all") { where.push("visibility = ?"); args.push(oneOf(vis, ["published", "hidden"])); }
-  if (url.searchParams.get("flagged") === "1") where.push("flagged = 1");
+  if (vis && vis !== "all") { where.push("r.visibility = ?"); args.push(oneOf(vis, ["published", "hidden"])); }
+  if (url.searchParams.get("flagged") === "1") where.push("r.flagged = 1");
   const q = (url.searchParams.get("q") || "").trim().slice(0, 60);
-  if (q) { where.push("(comment LIKE ? OR item_name LIKE ? OR author_name LIKE ?)"); args.push(`%${q}%`, `%${q}%`, `%${q}%`); }
+  if (q) { where.push("(r.comment LIKE ? OR r.item_name LIKE ? OR r.author_name LIKE ?)"); args.push(`%${q}%`, `%${q}%`, `%${q}%`); }
   const [rows, summary, dist] = await Promise.all([
-    env.DB.prepare(`SELECT * FROM reviews WHERE ${where.join(" AND ")} ORDER BY created_at DESC LIMIT 100`).bind(...args).all(),
+    env.DB.prepare(`SELECT r.*,
+      CASE WHEN EXISTS (SELECT 1 FROM review_bans b WHERE b.restaurant_id = r.restaurant_id AND b.client_key_hash = r.client_key_hash AND (b.expires_at IS NULL OR b.expires_at > ${Date.now()})) THEN 1 ELSE 0 END AS author_banned,
+      (SELECT b.expires_at FROM review_bans b WHERE b.restaurant_id = r.restaurant_id AND b.client_key_hash = r.client_key_hash AND (b.expires_at IS NULL OR b.expires_at > ${Date.now()}) LIMIT 1) AS ban_expires_at,
+      (SELECT b.reason FROM review_bans b WHERE b.restaurant_id = r.restaurant_id AND b.client_key_hash = r.client_key_hash AND (b.expires_at IS NULL OR b.expires_at > ${Date.now()}) LIMIT 1) AS ban_reason
+      FROM reviews r WHERE ${where.join(" AND ")} ORDER BY r.created_at DESC LIMIT 100`).bind(...args).all(),
     env.DB.prepare("SELECT COUNT(*) n, AVG(rating) avg, SUM(CASE WHEN visibility = 'hidden' THEN 1 ELSE 0 END) hidden, SUM(flagged) flagged, SUM(CASE WHEN reply IS NOT NULL THEN 1 ELSE 0 END) replied FROM reviews WHERE restaurant_id = ?").bind(s.restaurantId).first(),
     env.DB.prepare("SELECT rating, COUNT(*) n FROM reviews WHERE restaurant_id = ? GROUP BY rating").bind(s.restaurantId).all(),
   ]);
@@ -261,7 +329,7 @@ on("GET", "/api/panel/reviews", "reviews", async ({ env, s, url }) => {
   dist.results.forEach((r) => (d[r.rating] = r.n));
   return json({
     ok: true,
-    reviews: rows.results.map((r) => ({ ...r, flagged: !!r.flagged })),
+    reviews: rows.results.map((r) => ({ ...r, flagged: !!r.flagged, author_banned: !!r.author_banned })),
     summary: { count: summary.n || 0, avg: summary.n ? Math.round(summary.avg * 10) / 10 : null, hidden: summary.hidden || 0, flagged: summary.flagged || 0, replied: summary.replied || 0, distribution: d },
     reply_supported: true,
   });
@@ -281,6 +349,39 @@ on("PATCH", "/api/panel/reviews/:id", "reviews", async ({ request, env, s, p }) 
   await audit(env.DB, s.restaurantId, s.actor, "review.update", "review", p.id, { visibility: f.visibility, flagged: f.flagged, replied: "reply" in f ? !!f.reply : undefined });
   const row = await env.DB.prepare("SELECT * FROM reviews WHERE id = ?").bind(p.id).first();
   return json({ ok: true, review: { ...row, flagged: !!row.flagged } });
+});
+
+// بن کردن یا رفع بن نویسنده‌ی نظر؛ بن به شناسه‌ی ناشناس مرورگر وصل است نه localStorage.
+on("POST", "/api/panel/reviews/:id/ban", "reviews", async ({ request, env, s, p }) => {
+  const review = await env.DB.prepare("SELECT id, client_key_hash FROM reviews WHERE id = ? AND restaurant_id = ?").bind(p.id, s.restaurantId).first();
+  if (!review) throw new ApiError(404, "not_found", "نظر پیدا نشد.");
+  if (!review.client_key_hash) throw new ApiError(409, "review_identity_unavailable", "این نظر پیش از فعال‌شدن شناسه‌ی امن مرورگر ثبت شده و قابل بن مستقیم نیست.");
+  const b = await readJson(request, 2048);
+  const duration = oneOf(b.duration || "30d", ["1d", "7d", "30d", "never"], "مدت بن");
+  const reason = str(b.reason, { max: 160, field: "دلیل بن" }) || "تکرار اسپم یا رفتار نامناسب";
+  const now = Date.now();
+  const expires = duration === "never" ? null : now + ({ "1d": DAY_MS, "7d": 7 * DAY_MS, "30d": 30 * DAY_MS })[duration];
+  await env.DB.prepare("INSERT INTO review_bans (restaurant_id, client_key_hash, reason, created_at, expires_at, created_by) VALUES (?, ?, ?, ?, ?, ?) ON CONFLICT(restaurant_id, client_key_hash) DO UPDATE SET reason=excluded.reason, created_at=excluded.created_at, expires_at=excluded.expires_at, created_by=excluded.created_by")
+    .bind(s.restaurantId, review.client_key_hash, reason, now, expires, s.actor).run();
+  await audit(env.DB, s.restaurantId, s.actor, "review.author_ban", "review", review.id, { duration, reason, expires_at: expires });
+  return json({ ok: true, author_banned: true, expires_at: expires });
+});
+
+on("DELETE", "/api/panel/reviews/:id/ban", "reviews", async ({ env, s, p }) => {
+  const review = await env.DB.prepare("SELECT id, client_key_hash FROM reviews WHERE id = ? AND restaurant_id = ?").bind(p.id, s.restaurantId).first();
+  if (!review) throw new ApiError(404, "not_found", "نظر پیدا نشد.");
+  if (!review.client_key_hash) throw new ApiError(409, "review_identity_unavailable", "برای این نظر شناسه‌ی نویسنده ثبت نشده است.");
+  await env.DB.prepare("DELETE FROM review_bans WHERE restaurant_id = ? AND client_key_hash = ?").bind(s.restaurantId, review.client_key_hash).run();
+  await audit(env.DB, s.restaurantId, s.actor, "review.author_unban", "review", review.id, null);
+  return json({ ok: true, author_banned: false });
+});
+
+on("DELETE", "/api/panel/reviews/:id", "reviews", async ({ env, s, p }) => {
+  const review = await env.DB.prepare("SELECT id FROM reviews WHERE id = ? AND restaurant_id = ?").bind(p.id, s.restaurantId).first();
+  if (!review) throw new ApiError(404, "not_found", "نظر پیدا نشد.");
+  await env.DB.prepare("DELETE FROM reviews WHERE id = ? AND restaurant_id = ?").bind(p.id, s.restaurantId).run();
+  await audit(env.DB, s.restaurantId, s.actor, "review.delete", "review", review.id, null);
+  return json({ ok: true });
 });
 
 // ---------- درخواست‌های همکاری (فقط مدیر سپیدار) ----------
@@ -435,7 +536,10 @@ export async function handlePanel(request, env, url) {
     let s = null;
     if (r.perm) {
       s = await requireSession(request, env, r.perm === "auth" ? null : r.perm);
-      if (method !== "GET") assertSameOrigin(request, env);
+      if (method !== "GET") {
+        assertSameOrigin(request, env);
+        await panelMutationLimit(env, s, "all-writes", 100, 5 * 60 * 1000);
+      }
     }
     return r.handler({ request, env, url, s, p: m.groups || {} });
   }
