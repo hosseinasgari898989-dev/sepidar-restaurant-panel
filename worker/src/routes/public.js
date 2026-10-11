@@ -141,6 +141,10 @@ export async function handlePublic(request, env, url, headers) {
       const cat = menu.find((c) => c.items.some((i) => i.id === l.item_id));
       const item = cat && cat.items.find((i) => i.id === l.item_id);
       if (!item) throw new ApiError(422, "item_unavailable", "یکی از غذاهای سبد دیگر در منو نیست.");
+      // Defensive server-side rule: no product in the photo-only category can be ordered without a real image.
+      if (cat.id === "other" && !item.image_url) {
+        throw new ApiError(422, "image_required_for_other", `برای «${item.name}» ابتدا باید عکس واقعی محصول بارگذاری شود.`);
+      }
       if (!item.available) throw new ApiError(422, "item_unavailable", `«${item.name}» در حال حاضر موجود نیست.`);
       const qty = int(l.qty, { min: 1, max: 50, field: "تعداد" });
       // قیمت فقط در سرور و از منوی ذخیره‌شده محاسبه می‌شود؛ قیمت ارسالی مرورگر نادیده گرفته می‌شود
