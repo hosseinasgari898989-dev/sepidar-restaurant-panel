@@ -640,7 +640,7 @@ on("POST", "/api/panel/access-tokens", "platform_settings", async ({ request, en
 
 on("DELETE", "/api/panel/access-tokens/cleanup", "platform_settings", async ({ env, s }) => {
   const now = Date.now();
-  const rows = (await env.DB.prepare("SELECT id, label, role, revoked_at, expires_at FROM access_tokens WHERE restaurant_id = ?")
+  const rows = (await env.DB.prepare("SELECT id, label, role, created_at, revoked_at, expires_at FROM access_tokens WHERE restaurant_id = ?")
     .bind(s.restaurantId).all()).results;
   const asMilliseconds = (value) => value != null && Number(value) > 0 && Number(value) < 100000000000 ? Number(value) * 1000 : value;
   // Keep the token that authenticated this session. For bootstrap sessions,
