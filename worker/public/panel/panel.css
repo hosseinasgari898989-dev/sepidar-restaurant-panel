@@ -1011,3 +1011,65 @@ body[data-theme="dark"] .sp-select-trigger,body[data-theme="dark"] .sp-select-me
  .optrow [data-do]{grid-column:3/4;grid-row:2}
  .optrow .sp-select-trigger{min-height:42px;font-size:11.5px;padding:6px}
 }
+
+
+
+/* سپیدار: اصلاح حرفه‌ای چیدمان منو و پنجره‌های ویرایش در موبایل */
+.cat-section{min-width:0;margin:0 0 24px}
+.cat-head{display:grid!important;grid-template-columns:minmax(0,1fr) auto;align-items:start!important;gap:10px!important;margin:22px 0 12px!important;min-width:0}
+.cat-head-main{display:grid;gap:4px;min-width:0}
+.cat-title-row{display:flex;align-items:center;gap:8px;flex-wrap:wrap;min-width:0}
+.cat-title-row h3{font-size:19px;line-height:1.45;font-weight:850;min-width:0;overflow-wrap:anywhere}
+.cat-title-row .photo-only-badge{white-space:normal;max-width:100%;line-height:1.5;text-align:center;display:inline-flex;align-items:center;flex:0 1 auto}
+.cat-count{display:block;font-size:12px!important;line-height:1.6;overflow-wrap:anywhere}
+.cat-head-actions{display:flex;align-items:center;justify-content:flex-end;flex-wrap:wrap;gap:8px;min-width:0}
+.cat-head .sp{display:none}
+.optg{min-width:0;padding:clamp(10px,2.2vw,14px)}
+.optg .gh{grid-template-columns:minmax(0,1fr) auto auto}
+.optrow{grid-template-columns:minmax(0,1fr) 100px minmax(150px,190px) auto;gap:7px}
+.optrow input,.optrow select{min-width:0;font-size:13px}
+.optrow [data-visual]{max-width:100%}
+.optrow .sp-select{min-width:0;max-width:100%}
+.optrow .sp-select-trigger{min-height:40px;padding:7px 8px;font-size:12px;gap:5px}
+.optrow .sp-select-value{white-space:normal;line-height:1.45}
+.price-search-panel{min-width:0;padding:13px;border:1px solid var(--line);border-radius:15px;background:var(--soft);margin:8px 0}
+.price-search-fields{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:end;gap:10px}
+.price-search-fields>.btn{min-height:44px;white-space:nowrap}
+.price-search-hint,.price-search-time{display:block;margin:8px 0 0;font-size:12px;line-height:1.8}
+.price-search-loading{padding:12px 4px;color:var(--mut);font-size:13px}
+.price-search-answer{margin-top:10px;padding:11px;border:1px solid var(--line);border-radius:12px;background:var(--card)}
+.price-search-answer p{margin:5px 0 0;font-size:13px;line-height:1.9;white-space:pre-wrap}
+.price-search-warning{margin:10px 0;padding:9px 11px;border-radius:10px;background:color-mix(in srgb,#f0b44d 15%,var(--card));color:var(--fg);font-size:12px;line-height:1.8}
+.price-search-result{margin-top:9px;padding:12px;border:1px solid var(--line);border-radius:13px;background:var(--card);overflow-wrap:anywhere}
+.price-search-result>a{font-size:13px;font-weight:850;color:var(--or-ink);text-decoration:none}
+.price-search-result>small{display:block;margin-top:4px;font-size:11px;color:var(--mut)}
+.price-search-result>p{font-size:12.5px;line-height:1.9;margin:7px 0 0;color:var(--fg)}
+.price-search-apply{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-top:10px;padding-top:9px;border-top:1px dashed var(--line)}
+.price-search-apply strong{color:var(--or-ink);font-variant-numeric:tabular-nums}
+@media(max-width:640px){
+ .cat-head{grid-template-columns:minmax(0,1fr)!important;gap:8px!important;margin:18px 0 10px!important}
+ .cat-head-actions{justify-content:flex-start;width:100%}
+ .cat-head-actions .btn{max-width:100%;white-space:normal}
+ .cat-title-row{align-items:flex-start}
+ .cat-title-row .photo-only-badge{font-size:11px;white-space:normal;word-break:normal;max-width:min(100%,230px);flex-shrink:1}
+ .cat-count{white-space:normal}
+ .optrow{grid-template-columns:minmax(0,1fr) 78px auto;gap:6px}
+ .optrow [data-on]{grid-column:1/-1}
+ .optrow [data-op]{grid-column:1/2}
+ .optrow [data-visual]{grid-column:2/3;grid-row:2}
+ .optrow [data-do]{grid-column:3/4;grid-row:2}
+ .optrow .sp-select{grid-column:2/3;grid-row:2}
+ .optrow .sp-select-trigger{min-height:42px;font-size:11px;padding:6px}
+ .price-search-fields{grid-template-columns:1fr}
+ .price-search-fields>.btn{width:100%}
+ .price-search-apply .btn{flex:1}
+ .sh.wide{padding:18px 13px calc(24px + env(safe-area-inset-bottom))}
+ .form-grid{grid-template-columns:minmax(0,1fr);gap:0}
+ .form-grid .full{grid-column:1}
+}
+@media(max-width:380px){
+ .cat-title-row h3{font-size:17px}
+ .cat-title-row .photo-only-badge{font-size:10.5px;padding:4px 7px}
+ .cat-head-actions .btn{font-size:12px;padding:7px 9px}
+ .optrow{grid-template-columns:minmax(0,1fr) 70px auto}
+}
