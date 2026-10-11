@@ -64,3 +64,13 @@ Next inspect `worker/public/panel/js/views/reviews.js`, admin review GET route a
 - Worker asset override SHA: `70f1f2fbddf4644dc3674cf8aa93102d7fb05ae5`
 - Current pinned menu search-count: `1`; AI price picker exists: `true`.
 - Continue by fixing AI search item lookup first, then exposing customer review decoration/reaction details in management, deploying and testing both before claiming completion.
+
+
+## 🔧 FOLLOW-UP — deployed AI Search + review vote visibility fixes (2026-10-11)
+
+- Root cause #1 (AI price search 500): `/api/panel/ai-search` called `normalize(region)` before the `const normalize = ...` initialization. That hits JavaScript's temporal dead zone and throws a ReferenceError before Tavily is contacted. Converted the helper to a function declaration (hoisted within the handler) so region normalization is callable safely.
+- Root cause #2 (admin likes/dislikes showing 0): the panel reviews SQL joined the aggregated `review_votes` subquery but selected only `r.*`; it never selected `vote_counts.likes` / `vote_counts.dislikes`. The existing panel UI already displayed these values, defaulting missing fields to 0. Added both fields to the SELECT without changing vote-write behavior.
+- Source commits on main: `worker/src/routes/panel.js` commit `dc9426f7465ab205b384b99fcdc1e6d74493023d`; health marker bump in `worker/src/index.js` commit `b274bea3311d9755257b2831c4d2fe9812a50580`.
+- Cloudflare deployment created: `a2d25920-e071-4bec-b443-e1ac12038297`; active version `fcaee164-9ee6-49bb-a571-d91372724672` at 100% traffic. Live `/health` verified `version: 2026-10-panel-15`, `status: ready`, database/auth/reviews/image upload capabilities present.
+- D1 read-only check confirmed `review_votes` rows exist; current restaurant has two recent reviews with one like each and zero dislikes. Querying the same aggregate shape returns counts. No review rows/votes were modified or deleted during debugging.
+- Remaining verification: a full authenticated click test of AI search and the admin review page still needs a real signed-in panel browser session. TinyFish currently has no saved sign-in for this panel. After refreshing the live panel, confirm one price search and that 👍/👎 totals appear on the corresponding review; do not claim the authenticated workflow was end-to-end tested based only on /health.
