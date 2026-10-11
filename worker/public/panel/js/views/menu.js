@@ -215,7 +215,16 @@ function catEditor(ctx, cat, onSaved) {
     if (isNew) c.id = b.querySelector("[name=id]").value.trim().toLowerCase();
     c.name = b.querySelector("[name=name]").value; c.emoji = c.id === "other" ? "📷" : (b.querySelector("[name=emoji]")?.value || "🍽️");
     c.colors = [b.querySelector("[name=c1]").value, b.querySelector("[name=c2]").value];
-    c.options = c.id === "other" ? [] : [...b.querySelectorAll(".optg")].map((g) => ({ t: g.querySelector("[data-gt]").value, type: g.querySelector("[data-gy]").value, list: [...g.querySelectorAll(".optrow")].map((r) => [r.querySelector("[data-on]").value, r.querySelector("[data-op]").value]) }));
+    c.options = c.id === "other" ? [] : [...b.querySelectorAll(".optg")].map((g) => ({
+      t: g.querySelector("[data-gt]").value,
+      type: g.querySelector("[data-gy]").value,
+      list: [...g.querySelectorAll(".optrow")].map((r) => {
+        const option = [r.querySelector("[data-on]").value, r.querySelector("[data-op]").value];
+        const visual = r.querySelector("[data-ov]")?.value || "";
+        if (visual) option.push(visual);
+        return option;
+      }),
+    }));
   };
   const render = () => {
     s.set(html`
@@ -229,10 +238,10 @@ function catEditor(ctx, cat, onSaved) {
       </div>
       ${c.id === "other" ? html`<div class="note-box warn full">در دسته «سایر» گروه‌های شخصی‌سازی و مواد قابل حذف غیرفعال‌اند؛ مشتری فقط عکس واقعی محصول را می‌بیند و انتخاب می‌کند.</div>` : html`
       <div class="section-t">⚙️ گروه‌های شخصی‌سازی</div>
-      <p class="mut" style="font-size:13px;margin:0 0 10px">«تک‌انتخابی» مثل سایز یا نوع نان؛ «چندانتخابی» مثل افزودنی‌ها. قیمت مثبت = گران‌تر، منفی = ارزان‌تر. تغییرها را از همین پنل انجام بده؛ نیازی به ویرایش کد نیست.</p>
+      <p class="mut" style="font-size:13px;margin:0 0 10px">برای هر گزینه، نام و اختلاف قیمت را بنویس. اگر می‌خواهی مدل سه‌بعدی هم تغییر کند، «اثر سه‌بعدی» را انتخاب کن؛ مثلاً افزودن قارچ/پنیر یا حذف مرغ از ساندویچ مرغ. گزینه‌های گرافیکی فقط در مدل‌های سازگار اثر می‌گذارند.</p>
       <div id="groups">${c.options.map((g, gi) => html`<div class="optg" data-g="${gi}">
         <div class="gh"><input data-gt value="${g.t}" placeholder="عنوان گروه (مثلاً نوع پروتئین)" maxlength="60"><select data-gy><option value="one" ${g.type === "one" ? "selected" : ""}>تک‌انتخابی</option><option value="many" ${g.type === "many" ? "selected" : ""}>چندانتخابی</option></select><button class="icon-btn" data-dg="${gi}" aria-label="حذف گروه">🗑️</button></div>
-        ${g.list.map((o, oi) => html`<div class="optrow"><input data-on value="${o[0]}" placeholder="نام گزینه" maxlength="60" aria-label="نام گزینه"><input data-op value="${o[1]}" inputmode="numeric" dir="ltr" aria-label="قیمت اضافه (تومان)" placeholder="0"><button class="icon-btn" data-do="${gi}:${oi}" aria-label="حذف گزینه">✕</button></div>`)}
+        ${g.list.map((o, oi) => html`<div class="optrow"><input data-on value="${o[0]}" placeholder="نام گزینه" maxlength="60" aria-label="نام گزینه"><input data-op value="${o[1]}" inputmode="numeric" dir="ltr" aria-label="قیمت اضافه (تومان)" placeholder="0"><select data-ov aria-label="اثر این گزینه روی مدل سه‌بعدی"><option value="" ${!o[2] ? "selected" : ""}>بدون تغییر شکل</option><option value="add_lettuce" ${o[2] === "add_lettuce" ? "selected" : ""}>+ کاهو</option><option value="add_tomato" ${o[2] === "add_tomato" ? "selected" : ""}>+ گوجه</option><option value="add_cheese" ${o[2] === "add_cheese" ? "selected" : ""}>+ پنیر</option><option value="add_mushroom" ${o[2] === "add_mushroom" ? "selected" : ""}>+ قارچ</option><option value="add_jalapeno" ${o[2] === "add_jalapeno" ? "selected" : ""}>+ هالوپینو</option><option value="add_bacon" ${o[2] === "add_bacon" ? "selected" : ""}>+ ژامبون</option><option value="add_egg" ${o[2] === "add_egg" ? "selected" : ""}>+ تخم‌مرغ</option><option value="add_onion" ${o[2] === "add_onion" ? "selected" : ""}>+ پیاز</option><option value="add_pickle" ${o[2] === "add_pickle" ? "selected" : ""}>+ خیارشور</option><option value="remove_chicken" ${o[2] === "remove_chicken" ? "selected" : ""}>− مرغ (ساندویچ مرغ)</option><option value="remove_sausage" ${o[2] === "remove_sausage" ? "selected" : ""}>− سوسیس (هات‌داگ)</option></select><button class="icon-btn" data-do="${gi}:${oi}" aria-label="حذف گزینه">✕</button></div>`)}
         <button class="btn sm ghost" data-ao="${gi}">＋ گزینه</button></div>`)}</div>
       <button class="btn sm soft" data-ag>＋ گروه شخصی‌سازی</button>
       <div class="section-t">✂️ مواد قابل حذف</div>
