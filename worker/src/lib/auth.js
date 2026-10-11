@@ -16,9 +16,10 @@ export function authConfigured(env) {
   return Boolean(env.SEPIDAR_PANEL_BOOTSTRAP_TOKEN && env.SEPIDAR_PANEL_BOOTSTRAP_TOKEN.length >= 24 && env.DB);
 }
 
-async function ipKey(request) {
-  const ip = request.headers.get("CF-Connecting-IP") || "unknown";
-  return "login:" + (await sha256Hex("sp-ip:" + ip)).slice(0, 32);
+async function deviceKey(body) {
+  const id = typeof body.device_id === "string" ? body.device_id.trim() : "";
+  if (!/^[a-f0-9]{32,64}$/i.test(id)) throw new ApiError(422, "invalid_device_id", "شناسه امن دستگاه معتبر نیست؛ صفحه ورود را تازه‌سازی کنید.");
+  return "login:device:" + (await sha256Hex("sepidar-admin-device-v1:" + id.toLowerCase())).slice(0, 32);
 }
 
 async function safeEqual(a, b) {
@@ -71,11 +72,11 @@ export async function login(request, env) {
   }
   assertSameOrigin(request, env);
   const db = env.DB;
-  const key = await ipKey(request);
+  const body = await readJson(request, 2048);
+  const key = await deviceKey(body);
   await checkLimit(db, key, LOGIN_LIMIT);
   await checkLimit(db, "login:global", GLOBAL_LIMIT);
 
-  const body = await readJson(request, 2048);
   const token = typeof body.token === "string" ? body.token.trim() : "";
   const tokenWellFormed = token.length > 0 && token.length <= 256;
   const t = Date.now();
@@ -112,7 +113,7 @@ export async function login(request, env) {
   const exp = t + sessionTtl;
   const isBootstrap = !accessToken;
   await db.prepare("INSERT INTO sessions (id_hash, restaurant_id, role, created_at, expires_at, last_seen_at, ip_hash, user_agent, bootstrap, access_token_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
-    .bind(await sha256Hex(sid), restaurantId, role, t, exp, t, key.slice(6), (request.headers.get("User-Agent") || "").slice(0, 160), isBootstrap ? 1 : 0, accessToken?.id || null)
+    .bind(await sha256Hex(sid), restaurantId, role, t, exp, t, null, (request.headers.get("User-Agent") || "").slice(0, 160), isBootstrap ? 1 : 0, accessToken?.id || null)
     .run();
   // نشست‌های منقضی‌شده‌ی قدیمی را پاک کن؛ نشست‌های توکن لغوشده نیز دیگر قابل استفاده نیستند.
   await db.prepare("DELETE FROM sessions WHERE expires_at < ?").bind(t - 7 * 86400000).run();
