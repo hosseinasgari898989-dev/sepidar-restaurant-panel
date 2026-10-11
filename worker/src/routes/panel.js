@@ -55,6 +55,63 @@ function validImageSignature(bytes, type) {
   return false;
 }
 
+const IMAGE_CONTENT_TYPES = new Set(["image/jpeg", "image/png", "image/webp", "image/avif"]);
+
+// پارس multipart با سقف واقعی بدنه؛ به Content-Length به‌تنهایی اعتماد نمی‌کنیم.
+async function readBoundedFormData(request, maxBytes) {
+  const contentType = request.headers.get("Content-Type") || "";
+  if (!contentType.toLowerCase().startsWith("multipart/form-data")) {
+    throw new ApiError(415, "unsupported_media_type", "عکس باید از طریق فرم بارگذاری ارسال شود.");
+  }
+  if (!request.body) throw new ApiError(400, "invalid_multipart", "محتوای بارگذاری خالی است.");
+  const reader = request.body.getReader();
+  const chunks = [];
+  let total = 0;
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      total += value.byteLength;
+      if (total > maxBytes) {
+        try { await reader.cancel(); } catch {}
+        throw new ApiError(413, "image_too_large", "حجم عکس با احتساب فرم باید حداکثر ۵ مگابایت باشد.");
+      }
+      chunks.push(value);
+    }
+  } catch (err) {
+    if (err instanceof ApiError) throw err;
+    throw new ApiError(400, "invalid_multipart", "خواندن فرم عکس ناموفق بود.");
+  }
+  const body = new Uint8Array(total);
+  let offset = 0;
+  for (const chunk of chunks) { body.set(chunk, offset); offset += chunk.byteLength; }
+  try {
+    return await new Response(body, { headers: { "Content-Type": contentType } }).formData();
+  } catch {
+    throw new ApiError(400, "invalid_multipart", "ساختار فرم بارگذاری عکس معتبر نیست.");
+  }
+}
+
+function r2MediaKey(imageUrl, expectedOrigin) {
+  if (typeof imageUrl !== "string" || !imageUrl) return null;
+  try {
+    const u = new URL(imageUrl);
+    if (u.origin !== expectedOrigin || u.search || u.hash) return null;
+    const match = u.pathname.match(/^\\/media\\/([a-z0-9-]{1,40}\\/[A-Za-z0-9_-]{20,80}\\.(?:jpg|png|webp|avif))$/);
+    return match ? match[1] : null;
+  } catch { return null; }
+}
+
+async function requireR2Photo(env, origin, imageUrl) {
+  if (!env.FOOD_IMAGES) throw new ApiError(503, "image_storage_unavailable", "فضای ذخیره‌سازی عکس (R2) هنوز برای این Worker فعال نشده است.");
+  const key = r2MediaKey(imageUrl, origin);
+  if (!key) throw new ApiError(422, "image_required_for_other", "برای دسته «سایر» باید عکس واقعی را از همین پنل در R2 بارگذاری کنید.");
+  const object = await env.FOOD_IMAGES.head(key);
+  if (!object || !IMAGE_CONTENT_TYPES.has(object.httpMetadata?.contentType)) {
+    throw new ApiError(422, "image_required_for_other", "عکس بارگذاری‌شده در R2 پیدا نشد؛ دوباره عکس را بارگذاری کنید.");
+  }
+}
+
 // ---------- احراز هویت ----------
 on("POST", "/api/panel/auth/login", null, async ({ request, env }) => {
   const r = await login(request, env);
@@ -156,7 +213,7 @@ on("POST", "/api/panel/menu/images", "menu", async ({ request, env, url, s }) =>
   const length = Number(request.headers.get("Content-Length") || 0);
   if (length > 5 * 1024 * 1024 + 64 * 1024) throw new ApiError(413, "image_too_large", "حجم هر عکس حداکثر ۵ مگابایت است.");
   if (!(request.headers.get("Content-Type") || "").toLowerCase().startsWith("multipart/form-data")) throw new ApiError(415, "unsupported_media_type", "عکس باید از طریق فرم بارگذاری ارسال شود.");
-  const form = await request.formData();
+  const form = await readBoundedFormData(request, 5 * 1024 * 1024 + 64 * 1024);
   const file = form.get("file");
   if (!file || typeof file.arrayBuffer !== "function" || typeof file.size !== "number") throw new ApiError(422, "image_required", "ابتدا یک فایل عکس انتخاب کنید.");
   if (file.size < 16 || file.size > 5 * 1024 * 1024) throw new ApiError(413, "image_too_large", "حجم عکس باید بین ۱۶ بایت و ۵ مگابایت باشد.");
@@ -264,10 +321,10 @@ async function itemFields(env, s, b, partial) {
   return f;
 }
 
-on("POST", "/api/panel/menu/items", "menu", async ({ request, env, s }) => {
+on("POST", "/api/panel/menu/items", "menu", async ({ request, env, s, url }) => {
   const b = await readJson(request);
   const f = await itemFields(env, s, b, false);
-  if (f.category_id === "other" && (!f.image_url || !f.image_url.includes("/media/"))) throw new ApiError(422, "image_required_for_other", "برای دسته «سایر» باید عکس واقعی محصول را با آپلود R2 بارگذاری کنید.");
+  if (f.category_id === "other") await requireR2Photo(env, url.origin, f.image_url);
   await restaurantCreateLimit(env, s, "menu-item-create", 50, DAY_MS);
   const id = f.category_id + "-" + randomId(6).toLowerCase().replace(/[^a-z0-9]/g, "x");
   const max = await env.DB.prepare("SELECT COALESCE(MAX(sort), -1) m FROM menu_items WHERE restaurant_id = ? AND category_id = ?").bind(s.restaurantId, f.category_id).first();
@@ -278,14 +335,14 @@ on("POST", "/api/panel/menu/items", "menu", async ({ request, env, s }) => {
   return json({ ok: true, item: itemOut(row) }, 201);
 });
 
-on("PATCH", "/api/panel/menu/items/:id", "menu", async ({ request, env, s, p }) => {
+on("PATCH", "/api/panel/menu/items/:id", "menu", async ({ request, env, s, p, url }) => {
   const b = await readJson(request);
   const before = await env.DB.prepare("SELECT * FROM menu_items WHERE id = ? AND restaurant_id = ? AND archived = 0").bind(p.id, s.restaurantId).first();
   if (!before) throw new ApiError(404, "not_found", "غذا پیدا نشد.");
   const f = await itemFields(env, s, b, true);
   const finalCategoryId = f.category_id || before.category_id;
   const finalImageUrl = Object.prototype.hasOwnProperty.call(f, "image_url") ? f.image_url : before.image_url;
-  if (finalCategoryId === "other" && (!finalImageUrl || !finalImageUrl.includes("/media/"))) throw new ApiError(422, "image_required_for_other", "برای دسته «سایر» باید عکس واقعی محصول را با آپلود R2 بارگذاری کنید.");
+  if (finalCategoryId === "other") await requireR2Photo(env, url.origin, finalImageUrl);
   const keys = Object.keys(f);
   if (!keys.length) throw new ApiError(422, "validation_error", "تغییری ارسال نشده است.");
   await env.DB.prepare(`UPDATE menu_items SET ${keys.map((k) => `${k} = ?`).join(", ")}, updated_at = ? WHERE id = ? AND restaurant_id = ?`)
