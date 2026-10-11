@@ -13,6 +13,59 @@ const VIEWS = [dashboard, orders, menu, reviews, leads, qr, reports, settings];
 const MOBILE_MAIN = ["dashboard", "orders", "menu", "reviews"];
 const root = $("#root");
 const POLL_MS = 15000;
+const PANEL_APPEARANCE_KEY = "sepidar.panel.appearance.v1";
+
+function readPanelAppearance() {
+  try {
+    const p = JSON.parse(localStorage.getItem(PANEL_APPEARANCE_KEY) || "{}");
+    return {
+      theme: ["light", "dark"].includes(p.theme) ? p.theme : "light",
+      accent: ["orange", "mint", "violet"].includes(p.accent) ? p.accent : "orange",
+    };
+  } catch {
+    return { theme: "light", accent: "orange" };
+  }
+}
+function applyPanelAppearance() {
+  const p = readPanelAppearance();
+  document.body.dataset.theme = p.theme;
+  document.body.dataset.accent = p.accent;
+  document.querySelectorAll("[data-panel-theme]").forEach((b) => {
+    b.classList.toggle("active", b.dataset.panelTheme === p.theme);
+    b.setAttribute("aria-pressed", String(b.dataset.panelTheme === p.theme));
+  });
+  document.querySelectorAll("[data-panel-accent]").forEach((b) => {
+    b.classList.toggle("active", b.dataset.panelAccent === p.accent);
+    b.setAttribute("aria-pressed", String(b.dataset.panelAccent === p.accent));
+  });
+}
+function savePanelAppearance(changes) {
+  const p = { ...readPanelAppearance(), ...changes };
+  try { localStorage.setItem(PANEL_APPEARANCE_KEY, JSON.stringify(p)); } catch {}
+  applyPanelAppearance();
+}
+applyPanelAppearance();
+root.addEventListener("click", (e) => {
+  const toggle = e.target.closest("#appearanceToggle");
+  if (toggle) {
+    const menu = $("#appearanceMenu");
+    if (menu) {
+      menu.hidden = !menu.hidden;
+      toggle.setAttribute("aria-expanded", String(!menu.hidden));
+    }
+    return;
+  }
+  const theme = e.target.closest("[data-panel-theme]");
+  if (theme) { savePanelAppearance({ theme: theme.dataset.panelTheme }); return; }
+  const accent = e.target.closest("[data-panel-accent]");
+  if (accent) { savePanelAppearance({ accent: accent.dataset.panelAccent }); return; }
+});
+document.addEventListener("click", (e) => {
+  if (e.target.closest(".appearance-control")) return;
+  const menu = $("#appearanceMenu"), toggle = $("#appearanceToggle");
+  if (menu && !menu.hidden) menu.hidden = true;
+  if (toggle) toggle.setAttribute("aria-expanded", "false");
+});
 
 let api = live, session = null, health = null, cleanup = null, timers = [], badges = {}, lastMaxNo = null, lastSync = null, online = null;
 const subs = new Set();
@@ -133,6 +186,24 @@ async function enterApp() {
           <span class="cpill" id="cSrv" title="وضعیت اتصال سرور"><i></i><span>در حال اتصال…</span></span>
           <span class="cpill opt" id="cRest"><i></i><span></span></span>
         </div>
+        <div class="appearance-control">
+          <button class="icon-btn appearance-toggle" type="button" id="appearanceToggle" aria-label="تنظیم ظاهر پنل" title="تنظیم ظاهر پنل" aria-expanded="false" aria-controls="appearanceMenu">🎨</button>
+          <div class="appearance-menu" id="appearanceMenu" hidden>
+            <b class="appearance-title">ظاهر پنل مدیریت</b>
+            <span class="appearance-label">حالت نمایش</span>
+            <div class="appearance-options" role="group" aria-label="حالت نمایش">
+              <button type="button" data-panel-theme="light">☀️ روشن</button>
+              <button type="button" data-panel-theme="dark">🌙 تاریک</button>
+            </div>
+            <span class="appearance-label">رنگ سراسری</span>
+            <div class="appearance-colors" role="group" aria-label="رنگ سراسری">
+              <button type="button" data-panel-accent="orange"><i></i> نارنجی</button>
+              <button type="button" data-panel-accent="mint"><i></i> سبز نعنایی</button>
+              <button type="button" data-panel-accent="violet"><i></i> بنفش</button>
+            </div>
+            <p>انتخاب رنگ روی پس‌زمینه، کارت‌ها، منو و دکمه‌های پنل اعمال می‌شود.</p>
+          </div>
+        </div>
         <button class="icon-btn" id="out" aria-label="خروج از حساب" title="خروج">⎋</button>
       </header>
       <main class="view" id="view" tabindex="-1"></main>
@@ -142,6 +213,7 @@ async function enterApp() {
       <button id="more" data-v="more"><span class="ni">☰</span>بیشتر</button>
     </nav>
   </div>`;
+  applyPanelAppearance();
   const ctx = makeCtx(views, can);
   $("#out").onclick = (e) => busy(e.currentTarget, logout);
   $("#exitDemo") && ($("#exitDemo").onclick = () => { location.hash = ""; location.reload(); });
