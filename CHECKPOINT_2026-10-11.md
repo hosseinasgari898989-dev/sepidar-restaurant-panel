@@ -93,3 +93,12 @@ Then continue from the first unresolved issue with tests and small commits.
 - Static JavaScript checks passed for Worker route, menu view, API client, index, public route and override map. Cloudflare reports the latest Worker version `2026-10-panel-5`, `ready`, with 100% traffic on the latest deployment; ImageKit and Tavily secret bindings remain present.
 - The live public Worker returned version `2026-10-panel-5` and health `ready`. The live panel menu asset contains the new “جستجوی قیمت روز” section.
 - An authenticated end-to-end search click was not automated; owner should test by opening the panel, selecting an existing food, setting a region (e.g. Tehran/Qom), and searching. An empty result list is intentional when no recent, food-name-relevant sources are found; do not apply a price unless the source matches the exact product/portion and currency.
+
+
+## Menu search + AI selected-item lookup hotfix — 2026-10-11 17:55 UTC
+- User reported AI price search failure: `menu_item_not_found` despite selecting a food from the panel dropdown. The route previously relied only on the selected ID. It now first looks up the item by ID within the authenticated restaurant and, if that ID is stale/mismatched, safely falls back to an exact item-name + category match in the same restaurant. Ambiguous exact matches return a clear 409 instead of selecting an arbitrary item. Frontend now sends `item_id`, `item_name`, and `category_id`; applying a proposed price uses the server-resolved database ID.
+- Restored exactly one ordinary menu-filter search input (`id=q`) that filters menu food cards, while keeping the separate AI price-search section. The worker-pinned live asset map was updated, so the fix is included in the served panel JS.
+- Removed duplicated “تومان تومان” labels because the shared `money()` formatter already includes the currency suffix.
+- Static syntax check passed for the modified menu view and panel route; source/pinned asset checks confirmed one ordinary food search and one AI price search.
+- Worker version `2026-10-panel-8` deployed with 100% traffic. Live `/health` returned `ready`; required DB/ImageKit/Tavily secrets remained bound.
+- Authenticated click-through of the search could not be automated. Owner should reload the panel, confirm the regular food-search box is back, then try selecting a saved food and running AI price search again.
