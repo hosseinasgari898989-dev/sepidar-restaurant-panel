@@ -25,7 +25,6 @@
     "IMAGEKIT_URL_ENDPOINT": "https://ik.imagekit.io/amup8gp0i"
   },
 
-  "ai": { "binding": "AI" },
 
   "d1_databases": [
     {
@@ -38,5 +37,4 @@
   // ⚠️ کلیدهای محرمانه را هرگز اینجا ننویسید؛ فقط در Secrets ثبت شوند:
   // npx wrangler secret put SEPIDAR_PANEL_BOOTSTRAP_TOKEN
   // npx wrangler secret put IMAGEKIT_PRIVATE_KEY
-  // npx wrangler secret put TAVILY_API_KEY
 }
