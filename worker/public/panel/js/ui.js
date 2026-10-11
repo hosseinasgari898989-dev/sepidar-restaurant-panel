@@ -63,6 +63,135 @@ export function toast(msg, kind = "ok", ms = 3200) {
   setTimeout(() => { t.classList.add("out"); setTimeout(() => t.remove(), 300); }, ms);
 }
 
+// انتخاب‌گرهای سفارشی هم‌ظاهر با پنل؛ از منوی بومی سیستم‌عامل استفاده نمی‌کنند.
+const openCustomSelects = new Set();
+function closeCustomSelect(wrap) {
+  const menu = wrap?._spMenu;
+  if (menu) menu.remove();
+  if (wrap) {
+    wrap.classList.remove("is-open");
+    const trigger = wrap.querySelector(".sp-select-trigger");
+    if (trigger) trigger.setAttribute("aria-expanded", "false");
+    wrap._spMenu = null;
+    openCustomSelects.delete(wrap);
+  }
+}
+function closeOtherCustomSelects(except) {
+  for (const wrap of [...openCustomSelects]) if (wrap !== except) closeCustomSelect(wrap);
+}
+export function enhanceSelects(root = document) {
+  const list = [];
+  if (root?.matches?.("select")) list.push(root);
+  if (root?.querySelectorAll) list.push(...root.querySelectorAll("select"));
+  for (const select of list) {
+    if (select.dataset.spEnhanced === "1") continue;
+    select.dataset.spEnhanced = "1";
+    const wrap = document.createElement("div");
+    wrap.className = "sp-select";
+    const trigger = document.createElement("button");
+    trigger.type = "button";
+    trigger.className = "sp-select-trigger";
+    trigger.setAttribute("role", "combobox");
+    trigger.setAttribute("aria-haspopup", "listbox");
+    trigger.setAttribute("aria-expanded", "false");
+    const value = document.createElement("span");
+    value.className = "sp-select-value";
+    const arrow = document.createElement("span");
+    arrow.className = "sp-select-arrow";
+    arrow.setAttribute("aria-hidden", "true");
+    arrow.textContent = "⌄";
+    trigger.append(value, arrow);
+    select.classList.add("sp-native-select");
+    select.setAttribute("aria-hidden", "true");
+    select.tabIndex = -1;
+    select.insertAdjacentElement("beforebegin", wrap);
+    wrap.append(trigger, select);
+    const selectedLabel = () => select.selectedOptions[0]?.textContent?.trim() || "انتخاب کنید";
+    const sync = () => {
+      value.textContent = selectedLabel();
+      trigger.disabled = select.disabled;
+      trigger.setAttribute("aria-label", select.getAttribute("aria-label") || select.closest("label")?.querySelector("span")?.textContent?.trim() || "انتخاب گزینه");
+      if (wrap._spMenu) {
+        for (const b of wrap._spMenu.querySelectorAll("[data-sp-value]")) {
+          const isSelected = b.dataset.spValue === select.value;
+          b.classList.toggle("selected", isSelected);
+          b.setAttribute("aria-selected", String(isSelected));
+        }
+      }
+    };
+    const open = () => {
+      if (select.disabled) return;
+      closeOtherCustomSelects(wrap);
+      const menu = document.createElement("div");
+      menu.className = "sp-select-menu";
+      menu.setAttribute("role", "listbox");
+      for (const opt of [...select.options]) {
+        const item = document.createElement("button");
+        item.type = "button";
+        item.className = "sp-select-option" + (opt.value === select.value ? " selected" : "");
+        item.dataset.spValue = opt.value;
+        item.setAttribute("role", "option");
+        item.setAttribute("aria-selected", String(opt.value === select.value));
+        item.disabled = opt.disabled;
+        item.textContent = opt.textContent.trim();
+        item.addEventListener("click", () => {
+          select.value = opt.value;
+          select.dispatchEvent(new Event("change", { bubbles: true }));
+          sync();
+          closeCustomSelect(wrap);
+          trigger.focus();
+        });
+        menu.append(item);
+      }
+      document.body.append(menu);
+      wrap._spMenu = menu;
+      wrap.classList.add("is-open");
+      trigger.setAttribute("aria-expanded", "true");
+      openCustomSelects.add(wrap);
+      const r = trigger.getBoundingClientRect();
+      const maxH = Math.max(110, Math.min(300, window.innerHeight - 24));
+      menu.style.maxHeight = maxH + "px";
+      menu.style.minWidth = Math.min(Math.max(r.width, 210), window.innerWidth - 24) + "px";
+      const h = Math.min(menu.scrollHeight, maxH);
+      const downRoom = window.innerHeight - r.bottom - 12;
+      const top = downRoom >= Math.min(170, h) ? Math.min(r.bottom + 6, window.innerHeight - h - 12) : Math.max(12, r.top - h - 6);
+      const left = Math.max(12, Math.min(r.left, window.innerWidth - Math.min(Math.max(r.width, 210), window.innerWidth - 24) - 12));
+      menu.style.top = top + "px";
+      menu.style.left = left + "px";
+      menu.style.width = Math.min(Math.max(r.width, 210), window.innerWidth - 24) + "px";
+      menu.querySelector(".selected")?.scrollIntoView({ block: "nearest" });
+    };
+    trigger.addEventListener("click", () => wrap._spMenu ? closeCustomSelect(wrap) : open());
+    trigger.addEventListener("keydown", (e) => {
+      if (e.key === "ArrowDown" || e.key === "Enter" || e.key === " ") {
+        e.preventDefault();
+        if (!wrap._spMenu) open();
+        else wrap._spMenu.querySelector(".selected")?.focus();
+      } else if (e.key === "Escape") closeCustomSelect(wrap);
+    });
+    select.addEventListener("change", sync);
+    sync();
+  }
+}
+if (typeof document !== "undefined" && document.body) {
+  enhanceSelects(document.body);
+  document.addEventListener("click", (e) => {
+    if (e.target.closest(".sp-select") || e.target.closest(".sp-select-menu")) return;
+    closeOtherCustomSelects(null);
+  });
+  document.addEventListener("keydown", (e) => { if (e.key === "Escape") closeOtherCustomSelects(null); });
+  const selectObserver = new MutationObserver((records) => {
+    for (const rec of records) {
+      for (const node of rec.addedNodes) if (node.nodeType === 1) enhanceSelects(node);
+      for (const node of rec.removedNodes) if (node.nodeType === 1) {
+        const removed = node.matches?.(".sp-select") ? [node] : [...(node.querySelectorAll?.(".sp-select") || [])];
+        removed.forEach(closeCustomSelect);
+      }
+    }
+  });
+  selectObserver.observe(document.body, { childList: true, subtree: true });
+}
+
 // ---- پنجره (sheet) ----
 const stack = [];
 export function sheet(content, { wide = false, label = "پنجره", onClose } = {}) {
