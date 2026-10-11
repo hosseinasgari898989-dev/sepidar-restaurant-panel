@@ -100,7 +100,7 @@ function loginScreen(notice = "") {
         <p class="err" id="er" role="alert">${notice}</p>
         <button class="btn block" id="go" type="submit" disabled>ورود به پنل</button>
         <button class="demo-link" type="button" id="demo">مشاهده نسخه نمایشی با داده‌های ساختگی</button>
-        <p class="sec-note"><span>🔒</span><span>توکن فقط در سرور بررسی می‌شود و در مرورگر ذخیره نمی‌شود. پس از ورود، یک نشست محدود ${raw("<b>۸ ساعته</b>")} ساخته می‌شود.</span></p>
+        <p class="sec-note"><span>🔒</span><span>توکن فقط در سرور بررسی می‌شود و در مرورگر ذخیره نمی‌شود. نشست ورود محدود است: توکن اولیه ۸ ساعت و توکن‌های مدیریتی حداکثر ۳۰ روز یا تا پایان اعتبار خود توکن معتبر می‌مانند.</span></p>
       </form>
     </section>
   </main>`;
