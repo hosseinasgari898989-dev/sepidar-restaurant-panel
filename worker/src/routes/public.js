@@ -88,12 +88,60 @@ export async function handlePublic(request, env, url, headers) {
   }
 
   if (method === "GET" && sub === "reviews" && parts.length === 5) {
+    const visitorId = url.searchParams.get("client_id") || "";
+    const clientHash = /^[a-f0-9]{32,64}$/i.test(visitorId)
+      ? await sha256Hex("sepidar-client-v1:" + visitorId.toLowerCase())
+      : null;
     const [rows, sum] = await Promise.all([
-      db.prepare("SELECT id, item_name, rating, comment, author_name, reply, reply_at, created_at FROM reviews WHERE restaurant_id = ? AND visibility = 'published' ORDER BY created_at DESC LIMIT 50").bind(r.id).all(),
+      db.prepare(`SELECT r.id, r.item_name, r.rating, r.comment, r.author_name, r.reply, r.reply_at, r.created_at,
+        COALESCE(r.featured, 0) AS featured, COALESCE(r.feature_style, 'glow') AS feature_style,
+        COALESCE(votes.likes, 0) AS likes, COALESCE(votes.dislikes, 0) AS dislikes,
+        CASE WHEN ? IS NULL THEN NULL ELSE
+          (SELECT rv.vote FROM review_votes rv WHERE rv.restaurant_id = r.restaurant_id AND rv.review_id = r.id AND rv.client_key_hash = ? LIMIT 1)
+        END AS my_vote
+        FROM reviews r
+        LEFT JOIN (
+          SELECT review_id,
+            SUM(CASE WHEN vote = 'like' THEN 1 ELSE 0 END) AS likes,
+            SUM(CASE WHEN vote = 'dislike' THEN 1 ELSE 0 END) AS dislikes
+          FROM review_votes WHERE restaurant_id = ? GROUP BY review_id
+        ) votes ON votes.review_id = r.id
+        WHERE r.restaurant_id = ? AND r.visibility = 'published'
+        ORDER BY r.created_at DESC LIMIT 50`)
+        .bind(clientHash, clientHash, r.id, r.id).all(),
       // میانگین از همه امتیازها محاسبه می‌شود؛ پنهان‌کردن متن نظر، میانگین را دست‌کاری نمی‌کند
       db.prepare("SELECT COUNT(*) n, AVG(rating) avg FROM reviews WHERE restaurant_id = ?").bind(r.id).first(),
     ]);
-    return json({ ok: true, reviews: rows.results, summary: { count: sum.n || 0, avg: sum.n ? Math.round(sum.avg * 10) / 10 : null } }, 200, { headers });
+    return json({ ok: true, reviews: rows.results.map((review) => ({ ...review, featured: !!review.featured })), summary: { count: sum.n || 0, avg: sum.n ? Math.round(sum.avg * 10) / 10 : null } }, 200, { headers });
+  }
+
+  // هر مرورگر برای هر نظر فقط یک واکنش دارد؛ تغییر رأی، مقدار قبلی را جایگزین می‌کند.
+  if (method === "POST" && sub === "reviews" && parts.length === 7 && parts[6] === "vote") {
+    const reviewId = String(parts[5] || "").slice(0, 80);
+    if (!reviewId) throw new ApiError(404, "review_not_found", "نظر پیدا نشد.");
+    const b = await readJson(request, 2048);
+    const clientHash = await clientIdentity(b);
+    const vote = oneOf(b.vote, ["like", "dislike"], "نوع واکنش");
+    const limits = [
+      { key: "hour", limit: 60, windowMs: 60 * 60 * 1000 },
+      { key: "day", limit: 300, windowMs: DAY_MS },
+    ];
+    await enforceClientLimits(db, "review-vote", clientHash, limits);
+    await recordClientLimits(db, "review-vote", clientHash, limits);
+    const review = await db.prepare("SELECT id FROM reviews WHERE id = ? AND restaurant_id = ? AND visibility = 'published'")
+      .bind(reviewId, r.id).first();
+    if (!review) throw new ApiError(404, "review_not_found", "این نظر در دسترس نیست.");
+    const now = Date.now();
+    await db.prepare(`INSERT INTO review_votes (restaurant_id, review_id, client_key_hash, vote, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?)
+      ON CONFLICT(restaurant_id, review_id, client_key_hash)
+      DO UPDATE SET vote = excluded.vote, updated_at = excluded.updated_at`)
+      .bind(r.id, reviewId, clientHash, vote, now, now).run();
+    const totals = await db.prepare(`SELECT
+      COALESCE(SUM(CASE WHEN vote = 'like' THEN 1 ELSE 0 END), 0) AS likes,
+      COALESCE(SUM(CASE WHEN vote = 'dislike' THEN 1 ELSE 0 END), 0) AS dislikes
+      FROM review_votes WHERE restaurant_id = ? AND review_id = ?`).bind(r.id, reviewId).first();
+    return json({ ok: true, likes: totals?.likes || 0, dislikes: totals?.dislikes || 0, my_vote: vote }, 200, { headers });
   }
 
   if (method === "POST" && sub === "reviews" && parts.length === 5) {
