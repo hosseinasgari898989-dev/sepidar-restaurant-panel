@@ -16,9 +16,13 @@ Continue only on `feat/release-hardening-2026-10-11`. Do not merge/deploy to pro
 - Panel `worker/src/index.js`: `234e52a9a7fbfb181526054ca97a3592f33a34ce`
 - Panel `worker/public/panel/js/api.js`: `18d3d6b65e836409611a190a846c1b36066a6047`
 - Panel `worker/public/panel/js/views/menu.js`: `d9b66aa5ef7758f807207261fd79a61acf6a151c`
-- Panel `worker/src/routes/public.js`: `1084f0fe318f9cd58b5505810a91c358932cc332`
-- Panel `worker/src/routes/panel.js`: `5ea69349c0e8fd5a66eecef4399ac8874d85b515`
-- Panel `worker/public/panel/js/views/qr.js`: `2218241ba7c7e091acf2da9f4fcc39e39a164f97`
+- Panel `worker/src/routes/public.js`: `789acc2c88cf856c797cb9897b8664476fd86ba8`
+- Panel `worker/src/routes/panel.js`: `c47b8b5ac99d0ec8355992600e4410401b1f9fe9`
+- Panel `worker/public/panel/js/views/qr.js`: `2218241ba7c7e091acf2da9f4fcc39e39a164f97` (unchanged)
+- Panel `worker/public/panel/panel.css`: `9bf3d4e37d44c65389be4799ea89397fc823acbf`
+- Panel `worker/public/panel/js/app.js`: `dcf0249240c8bff84aa497d27515ce09242f8a6f`
+- Panel `worker/public/panel/js/views/settings.js`: `c8f9859f0d7605ecc094f8ec7475159ca1f3a27e`
+- Panel `worker/src/lib/panel-overrides.js`: `8654e9f660f383a7e3b10a26feb789b2cc3c173f`
 
 ## Already present on the working branch
 ### Customer `index.html`
@@ -33,26 +37,36 @@ Continue only on `feat/release-hardening-2026-10-11`. Do not merge/deploy to pro
 - `/media/{key}` GET/HEAD path checks an R2 binding named `FOOD_IMAGES`, constrains key/content type and sets defensive headers.
 - API client has `uploadImage(file)`, sends `device_id` on login (device ID is not the session token), and exposes review ban/unban/delete API methods.
 - Food editor already contains a file-picker/upload button UI, URL field, and explanatory “Other = real photo only” label. Previous attempt to re-add that markup was unnecessary; the editor file already had it.
-- `worker/src/routes/panel.js` contains image-signature validation helper and panel/restaurant rate-limit helpers. Need inspect actual upload route and ensure it is wired correctly.
+- The upload route is wired: bounded multipart stream (5 MiB + small multipart allowance), MIME + file signature checks, session permission, upload attempt rate-limit, random object name, and fixed media URL. The new `requireR2Photo` verifies same-origin `/media/...` key plus R2 object/type for category `other`.
+- The Worker override map is synchronized from matching `worker/public/panel/*` source files; without this, the embedded `/panel/panel.css` and app file would have hidden changes in the public files.
 
 ### Public API `worker/src/routes/public.js`
-- Has server-side rate limiting for partnership leads and reviews using hashed anonymous client ID, a recent duplicate-review check, and a review-ban lookup table `review_bans`.
-- This code references schema fields/tables `review_bans`, `reviews.client_key_hash`, and rate-limit storage. Verify migrations/schema exist and match before assuming it works.
+- Has server-side rate limiting for partnership leads, reviews, and orders using hashed anonymous client ID, a recent duplicate-review check, and a review-ban lookup table `review_bans`. Valid and invalid form attempts are now counted after the quota check to stop repeating invalid payloads without consuming quota.
+- Verified read-only against the live `sepidar-db` D1 schema: `review_bans`, `access_tokens`, `rate_limits`, `reviews.client_key_hash`, `sessions.bootstrap`, `sessions.access_token_id`, and related indexes exist. No D1 writes/migrations were performed.
 - IP is intentionally not used/stored in the current public identity code; don't silently reintroduce IP-based enforcement.
 
-## Outstanding work (continue in this order)
-1. Finish checkpoint then inspect actual migrations/schema, `worker/wrangler.toml` (the guessed path was 404; discover correct config path), `worker/src/index.js`, and panel/public routes.
-2. Verify food-image upload route, content validation/size cap, authorization, R2 binding/bucket config, and how deployment secrets/bindings are configured. Do not claim R2 is production-ready until the binding and bucket are confirmed.
-3. Complete category `other` server-side validation (uploaded photo required); ensure other-category items cannot silently use 3D fallback; dynamic categories are admin-managed and customer menu reads them from API.
-4. Review admin token lifecycle UI/backend: create/revoke/expiry (hour/day/year/permanent), hashing/secure storage, no raw access token in localStorage, correct session expiry/revocation. The user mentioned a limited 8-hour session; verify actual auth code before relying on that claim.
-5. Implement or verify server-side review delete/ban/unban routes and moderation UI. Ensure only authorized admin sessions can invoke them, and ban identity works as far as browser IDs allow; disclose that cleared cookies/another device can evade a browser-only identity.
-6. Inspect QR page layout and responsive CSS; prevent QR preview/iframe/cards from overflowing on mobile; keep safe sandbox and avoid production mutations.
-7. Audit dark mode across customer + admin, remove customer “warm/mild” option if still present, make selected accent color consistent, check notifications/modals/sheets/footer management panel.
-8. Verify no-select behavior keeps inputs/textareas/selects/contenteditable and accessibility interactions usable.
-9. Rate-limit order spam, admin add/edit menu operations and token actions. Confirm rate-limit errors are clear and fail closed where security matters.
-10. Demo/preview must be clearly non-production and must not mutate real menu/orders/reviews/tokens.
-11. Use TinyFish for live public-page inspection and MagicPath for design exploration, but do not treat MagicPath output as deployed code. Run safe read-only smoke tests; do not submit fake real orders/reviews to production.
-12. Perform JS/build checks and mobile/desktop smoke tests, review diff, then open draft PRs; do not merge until all critical checks pass.
+## Work completed in this checkpoint (feature branch only)
+- Found the actual config at `worker/wrangler.jsonc`; it has D1 binding `DB`, `SESSION_TTL_HOURS: "8"`, and **no active R2 binding**.
+- Verified live `GET /health` and live public site with TinyFish. Live health reported `image_upload:false`; live Pages/Worker are still the production deployment and do not yet include this feature branch.
+- Confirmed the customer site supports `?r=`; changed the admin QR API metadata from `customer_reads_param:false` to `true` so the UI no longer warns incorrectly after deployment.
+- Patched QR layout at mobile widths (single-column, bounded QR/phone preview, no perspective transform on narrow screens) and disabled accidental selection/long-press highlight on non-editable panel controls while preserving input and token-code selection.
+- Hardened image upload with bounded streaming multipart parsing and file-signature checks. Server now checks `other` category photo URLs are same-origin `/media/` objects that exist in R2 and have approved image metadata. This is branch code only.
+- Public lead/review/order rate-limit accounting now consumes quota on invalid attempts as well as valid submits, after checking the current limit. Admin routes already have a general 100 mutations/5-min/session limiter; token, item/category, and image-upload paths also have targeted caps.
+- Corrected misleading token/session copy in both login and settings screens: current config uses an 8-hour session; token lifetime is independent. Raw access tokens stay out of browser storage; the session is an HttpOnly cookie.
+- Synced the static `PANEL_OVERRIDES` map byte-for-byte from the corresponding `worker/public/panel` source files; cache query keys are now `20261011-qr-touch6` so clients do not keep stale copies.
+- Customer branch syntax/structure check passed: inline JS parses; CSS braces balance; only light/dark theme options exist, accents are orange/mint/violet, and `other` cards show a photo-required placeholder rather than the 3D canvas when no photo exists.
+- MagicPath concept created and built successfully, component `459966707872710656`, revision `459966707872710657`, name `fine-world-9729`. It is a safe design mock only; it is not integrated into the production site.
+
+## Blocking configuration
+Cloudflare API returned error `10042: Please enable R2 through the Cloudflare Dashboard` when attempting a read-only bucket list. R2 is not enabled for the account, so no bucket could be listed or created. Do not add an active `FOOD_IMAGES` binding until the owner enables R2 in the dashboard and creates/confirms bucket `sepidar-food-images`. No D1 data was changed.
+
+## Remaining work (continue in this order)
+1. Run smaller-batch final syntax/consistency checks for all changed JS and verify `PANEL_OVERRIDES` strings match source assets; avoid oversized multi-file returns.
+2. Review `worker/public/panel/js/views/qr.js`, `panel.css`, the QR API response, and customer menu route together for QR/mobile consistency.
+3. Recheck demo paths and ensure all mutations in demo mode remain synthetic/local only.
+4. Inspect any remaining dark surfaces with a focused list (modals, alerts, review form, customer bottom cart bar, admin bottom navigation and cards); do not rewrite whole theme CSS unnecessarily.
+5. If/when R2 is enabled, create/confirm bucket and add `r2_buckets` binding to `worker/wrangler.jsonc`, then test upload → saved image URL → media GET/HEAD → category `other` validation. Until then `image_upload` must stay false and upload UI must stay disabled.
+6. Make read-only production smoke tests again, review branch diff/build, then open draft PRs and wait for full validation; do not merge/deploy yet.
 
 ## Prior known result
 Customer API integration had previously been merged at commit `e022c20760ef1025086a97f77b6fd8f0522dbbad`; current feature work was created after that. Do not assume the latest branch has reached production. Prior customer account/tracking/theme updates had a live smoke-test mismatch, so verify actual deployed surfaces.
