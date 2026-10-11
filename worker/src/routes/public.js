@@ -40,6 +40,25 @@ export async function handlePublic(request, env, url, headers) {
   const r = await restaurantOr404(db, parts[3]);
   const sub = parts[4] || "";
 
+  // پیگیری امن سفارش مشتری؛ دسترسی فقط با توکن محرمانه‌ای که هنگام ثبت سفارش صادر شده است.
+  if (method === "GET" && sub === "orders" && parts.length === 6) {
+    const token = (url.searchParams.get("token") || "").trim();
+    if (token.length < 40 || token.length > 128) throw new ApiError(404, "order_not_found", "سفارش پیدا نشد.");
+    const tokenHash = await sha256Hex("sepidar-order-track:" + token);
+    const key = "pub:track:" + tokenHash.slice(0, 32);
+    const lim = { limit: 120, windowMs: 60 * 60 * 1000 };
+    await checkLimit(db, key, lim);
+    const order = await db.prepare(
+      "SELECT id, number, status, total, cancel_reason, created_at, updated_at, estimated_ready_at FROM orders WHERE id = ? AND restaurant_id = ? AND tracking_token_hash = ?"
+    ).bind(parts[5], r.id, tokenHash).first();
+    if (!order) throw new ApiError(404, "order_not_found", "سفارش پیدا نشد.");
+    const events = await db.prepare(
+      "SELECT from_status, to_status, created_at FROM order_events WHERE order_id = ? AND restaurant_id = ? ORDER BY id"
+    ).bind(order.id, r.id).all();
+    await hit(db, key, lim);
+    return json({ ok: true, order, events: events.results }, 200, { headers });
+  }
+
   if (method === "GET" && !sub) return json({ ok: true, restaurant: { ...r, accepting_orders: !!r.accepting_orders } }, 200, { headers });
 
   if (method === "GET" && sub === "menu" && parts.length === 5) {
@@ -95,17 +114,18 @@ export async function handlePublic(request, env, url, headers) {
       return { cat, item, qty, ...pr, note: str(l.note, { max: 200, field: "توضیحات آشپز" }) };
     });
     const total = lines.reduce((a, l) => a + l.unit * l.qty, 0);
-    const t = Date.now(), id = randomId(12);
+    const t = Date.now(), id = randomId(12), trackingToken = randomId(32);
+    const trackingTokenHash = await sha256Hex("sepidar-order-track:" + trackingToken);
     const table = str(b.table_label, { max: 40, field: "نام یا شماره میز" });
-    await db.prepare("INSERT INTO orders (id, restaurant_id, number, table_label, status, total, created_at, updated_at) SELECT ?, ?, COALESCE(MAX(number), 100) + 1, ?, 'new', ?, ?, ? FROM orders WHERE restaurant_id = ?")
-      .bind(id, r.id, table || null, total, t, t, r.id).run();
+    await db.prepare("INSERT INTO orders (id, restaurant_id, number, table_label, status, total, tracking_token_hash, created_at, updated_at) SELECT ?, ?, COALESCE(MAX(number), 100) + 1, ?, 'new', ?, ?, ?, ? FROM orders WHERE restaurant_id = ?")
+      .bind(id, r.id, table || null, total, trackingTokenHash, t, t, r.id).run();
     await db.batch(lines.map((l) => db.prepare("INSERT INTO order_items (order_id, restaurant_id, item_id, category_id, name, emoji, color1, color2, image_url, qty, unit_price, line_total, options, removed, note) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
       .bind(id, r.id, l.item.id, l.cat.id, l.item.name, l.item.emoji, l.cat.colors[0], l.cat.colors[1], l.item.image_url || null, l.qty, l.unit, l.unit * l.qty, JSON.stringify(l.options), JSON.stringify(l.removed), l.note || null)));
     await db.prepare("INSERT INTO order_events (order_id, restaurant_id, from_status, to_status, actor, created_at) VALUES (?, ?, NULL, 'new', 'customer', ?)").bind(id, r.id, t).run();
     await hit(db, key, lim);
     const o = await db.prepare("SELECT number FROM orders WHERE id = ?").bind(id).first();
     await audit(db, r.id, "customer", "order.create", "order", id, { number: o.number, total });
-    return json({ ok: true, order: { number: o.number, total, status: "new" } }, 201, { headers });
+    return json({ ok: true, order: { id, number: o.number, total, status: "new", created_at: t, estimated_ready_at: null, tracking_token: trackingToken } }, 201, { headers });
   }
 
   throw new ApiError(404, "not_implemented", "این مسیر هنوز در سرور پیاده‌سازی نشده است.");
