@@ -16,7 +16,36 @@ const ACT = {
   "auth.logout_all": () => ["🚪", "لغو همه نشست‌ها", ""],
   "lead.update": () => ["🤝", "وضعیت درخواست همکاری تغییر کرد", ""],
   "lead.view": () => ["👁️", "جزئیات درخواست همکاری مشاهده شد", ""],
+  "review.delete": () => ["🗑️", "یک نظر مشتری حذف شد", "نظر از فهرست عمومی و میانگین امتیاز کنار گذاشته شد."],
+  "review.author_ban": (d) => ["⛔", "نویسندهٔ یک نظر مسدود شد", d?.duration === "never" ? "مسدودسازی دائمی" : "مدت مسدودسازی: " + (d?.duration || "تنظیم‌شده")],
+  "review.author_unban": () => ["🔓", "مسدودسازی نویسنده برداشته شد", "نویسنده می‌تواند دوباره نظر ثبت کند."],
+  "review.reply": () => ["💬", "پاسخ رستوران به نظر ثبت شد", ""],
+  "review.feature": () => ["✨", "یک نظر به‌صورت ویژه نمایش داده شد", "جلوهٔ ویژهٔ نظر در سایت مشتریان تغییر کرد."],
+  "review.vote": () => ["👍", "بازخورد یک نظر ثبت شد", ""],
+  "access_token.create": (d) => ["🔑", "توکن ورود جدید ساخته شد", d?.label ? "نام توکن: " + d.label : "توکن جدید به فهرست اضافه شد."],
+  "access_token.revoke": (d) => ["🛡️", "دسترسی یک توکن لغو شد", d?.label ? "توکن: " + d.label : "نشست‌های وابسته نیز لغو شدند."],
+  "access_token.delete": (d) => ["🧹", "توکن قدیمی از فهرست پاک شد", d?.label ? "توکن: " + d.label : ""],
+  "access_token.cleanup": (d) => ["🧹", "پاکسازی توکن‌ها انجام شد", "لغو‌شده: " + F(d?.revoked || 0) + " · حذف‌شده: " + F(d?.deleted || 0)],
+  "menu.image_upload": (d) => ["📷", "عکس واقعی غذا بارگذاری شد", d?.type ? "قالب: " + d.type.replace("image/", "").toUpperCase() : ""],
+  "auth.login_failed": () => ["⚠️", "تلاش ناموفق برای ورود", "توکن معتبر نبود یا دسترسی آن لغو شده است."],
 };
+const FRIENDLY_ACTIONS = {
+  "menu.category_delete": ["🗂️", "یک دسته از منو حذف شد"],
+  "menu.item_update": ["🍽️", "جزئیات یک غذا ویرایش شد"],
+  "menu.category_update": ["🗂️", "تنظیمات یک دسته تغییر کرد"],
+  "settings.update": ["⚙️", "تنظیمات رستوران به‌روزرسانی شد"],
+  "access_token.create": ["🔑", "توکن ورود جدید ساخته شد"],
+  "access_token.revoke": ["🛡️", "دسترسی یک توکن لغو شد"],
+  "session.revoke": ["🛡️", "یک نشست مدیریتی لغو شد"],
+};
+function friendlyAction(action, detail) {
+  if (FRIENDLY_ACTIONS[action]) return [...FRIENDLY_ACTIONS[action], ""];
+  if (String(action || "").startsWith("review.")) return ["⭐", "فعالیتی در مدیریت نظرات انجام شد", "جزئیات این عملیات در بخش نظرات قابل بررسی است."];
+  if (String(action || "").startsWith("access_token.")) return ["🔑", "مدیریت توکن‌های ورود تغییر کرد", "فهرست توکن‌ها را برای جزئیات بررسی کنید."];
+  if (String(action || "").startsWith("menu.")) return ["🍽️", "بخشی از منو تغییر کرد", "جزئیات را در مدیریت منو بررسی کنید."];
+  if (String(action || "").startsWith("auth.")) return ["🔐", "رویداد امنیتی ورود ثبت شد", "در صورت ناشناس‌بودن این رویداد، نشست‌ها و توکن‌ها را بررسی کنید."];
+  return ["•", "فعالیت مدیریتی ثبت شد", "برای جزئیات بیشتر، بخش مربوطه را بررسی کنید."];
+}
 
 export default {
   id: "dashboard", title: "داشبورد", icon: "📊", perm: "orders",
@@ -61,7 +90,7 @@ export default {
       try {
         const a = await ctx.api.activity();
         el.querySelector("#ac").innerHTML = (a.activity.length ? html`<div class="feed">${a.activity.slice(0, 8).map((x) => {
-          const [ic, t, sub] = (ACT[x.action] || (() => ["•", x.action, ""]))(x.detail);
+          const [ic, t, sub] = (ACT[x.action] || (() => friendlyAction(x.action, x.detail)))(x.detail);
           return html`<div class="it"><span class="ic">${ic}</span><div><b style="font-weight:600">${t}</b>${sub ? html`<div class="mut" style="font-size:13px">${sub}</div>` : ""}<time>${ago(x.created_at)}</time></div></div>`;
         })}</div>` : empty("🌱", "فعالیتی ثبت نشده", "تغییر وضعیت سفارش‌ها و منو اینجا ثبت می‌شود.")).s;
       } catch (err) {
