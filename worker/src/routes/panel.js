@@ -502,7 +502,22 @@ on("PATCH", "/api/panel/settings", "settings", async ({ request, env, s }) => {
 on("GET", "/api/panel/access-tokens", "platform_settings", async ({ env, s }) => {
   const rows = (await env.DB.prepare("SELECT id, token_prefix, label, role, created_at, expires_at, revoked_at, last_used_at FROM access_tokens WHERE restaurant_id = ? ORDER BY created_at DESC LIMIT 100")
     .bind(s.restaurantId).all()).results;
-  return json({ ok: true, tokens: rows.map((row) => ({ ...row, is_current: row.id === s.accessTokenId })) });
+  // The browser can have an incorrect system clock; return server time so the UI
+  // can show expiry consistently with the server-side authentication checks.
+  const serverTime = Date.now();
+  const asMilliseconds = (value) => value != null && Number(value) > 0 && Number(value) < 100000000000 ? Number(value) * 1000 : value;
+  return json({
+    ok: true,
+    server_time: serverTime,
+    tokens: rows.map((row) => ({
+      ...row,
+      created_at: asMilliseconds(row.created_at),
+      expires_at: asMilliseconds(row.expires_at),
+      revoked_at: asMilliseconds(row.revoked_at),
+      last_used_at: asMilliseconds(row.last_used_at),
+      is_current: row.id === s.accessTokenId,
+    })),
+  });
 });
 
 on("POST", "/api/panel/access-tokens", "platform_settings", async ({ request, env, s }) => {
@@ -531,19 +546,42 @@ on("POST", "/api/panel/access-tokens", "platform_settings", async ({ request, en
   return json({ ok: true, token: { id, token, token_prefix: prefix, label, role, created_at: now, expires_at: expiresAt, revoked_at: null, last_used_at: null, is_current: false } });
 });
 
+on("DELETE", "/api/panel/access-tokens/cleanup", "platform_settings", async ({ env, s }) => {
+  const now = Date.now();
+  const rows = (await env.DB.prepare("SELECT id, label, role, revoked_at, expires_at FROM access_tokens WHERE restaurant_id = ?")
+    .bind(s.restaurantId).all()).results;
+  const asMilliseconds = (value) => value != null && Number(value) > 0 && Number(value) < 100000000000 ? Number(value) * 1000 : value;
+  // Keep the token that authenticated this session. For bootstrap sessions,
+  // keep the newest currently-valid token so cleanup cannot strand the manager.
+  const active = rows
+    .filter((row) => !row.revoked_at && (row.expires_at == null || asMilliseconds(row.expires_at) > now))
+    .sort((a, b) => Number(b.created_at || 0) - Number(a.created_at || 0));
+  const protectedId = s.accessTokenId || active[0]?.id || null;
+  let deleted = 0;
+  for (const row of rows) {
+    if (row.id === protectedId) continue;
+    await env.DB.prepare("UPDATE sessions SET revoked_at = ? WHERE access_token_id = ? AND revoked_at IS NULL")
+      .bind(now, row.id).run();
+    await env.DB.prepare("DELETE FROM access_tokens WHERE id = ? AND restaurant_id = ?")
+      .bind(row.id, s.restaurantId).run();
+    deleted++;
+  }
+  await audit(env.DB, s.restaurantId, s.actor, "access_token.cleanup", "access_token", protectedId, { deleted, protected_token_kept: Boolean(protectedId) });
+  return json({ ok: true, deleted, protected_token_id: protectedId, active_token_kept: Boolean(protectedId) });
+});
+
 on("DELETE", "/api/panel/access-tokens/:id", "platform_settings", async ({ env, s, p }) => {
   const target = await env.DB.prepare("SELECT id, label, role, revoked_at FROM access_tokens WHERE id = ? AND restaurant_id = ?")
     .bind(p.id, s.restaurantId).first();
   if (!target) throw new ApiError(404, "not_found", "توکن پیدا نشد.");
-  if (s.accessTokenId === target.id) throw new ApiError(409, "current_token", "این توکن برای نشست فعلی استفاده شده؛ ابتدا با توکن دیگری وارد شوید و سپس آن را لغو کنید.");
-  if (target.revoked_at) return json({ ok: true, already_revoked: true });
+  if (s.accessTokenId === target.id) throw new ApiError(409, "current_token", "این توکن برای نشست فعلی استفاده شده؛ ابتدا با توکن دیگری وارد شوید و سپس آن را حذف کنید.");
   const now = Date.now();
-  await env.DB.prepare("UPDATE access_tokens SET revoked_at = ? WHERE id = ? AND restaurant_id = ? AND revoked_at IS NULL")
-    .bind(now, target.id, s.restaurantId).run();
   await env.DB.prepare("UPDATE sessions SET revoked_at = ? WHERE access_token_id = ? AND revoked_at IS NULL")
     .bind(now, target.id).run();
-  await audit(env.DB, s.restaurantId, s.actor, "access_token.revoke", "access_token", target.id, { label: target.label, role: target.role });
-  return json({ ok: true });
+  await env.DB.prepare("DELETE FROM access_tokens WHERE id = ? AND restaurant_id = ?")
+    .bind(target.id, s.restaurantId).run();
+  await audit(env.DB, s.restaurantId, s.actor, "access_token.delete", "access_token", target.id, { label: target.label, role: target.role });
+  return json({ ok: true, deleted: true });
 });
 
 on("GET", "/api/panel/qr", "restaurant", async ({ env, s }) => {
