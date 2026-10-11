@@ -9,8 +9,15 @@ const emit = (ev, d) => (listeners[ev] || []).forEach((f) => f(d));
 function panelDeviceId() {
   const name = "sepidar_admin_device_v1";
   let fromCookie = "";
-  try { fromCookie = (document.cookie.match(new RegExp("(?:^|;\\\\s*)" + name + "=([a-f0-9]{32,64})", "i")) || [])[1] || ""; } catch {}
-  if (fromCookie) return fromCookie.toLowerCase();
+  try {
+    const pair = document.cookie.split(";").map((x) => x.trim()).find((x) => x.startsWith(name + "="));
+    fromCookie = pair ? pair.slice(name.length + 1) : "";
+  } catch {}
+  if (/^[a-f0-9]{32,64}$/i.test(fromCookie)) {
+    const id = fromCookie.toLowerCase();
+    try { localStorage.setItem(name, id); } catch {}
+    return id;
+  }
   let id = "";
   try { id = localStorage.getItem(name) || ""; } catch {}
   if (!/^[a-f0-9]{32,64}$/i.test(id)) {
