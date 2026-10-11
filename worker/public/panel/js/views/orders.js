@@ -7,6 +7,39 @@ let viewMode = "list";
 const isCustom = (l) => l.options.some((o) => !o.d) || l.removed.length || l.note;
 const lineTags = (l) => html`${l.options.map((o) => html`<span class="tg ${o.d ? "def" : ""}">${o.n}${o.p && !o.d ? html`<small>${o.p > 0 ? "+" : "−"}${F(Math.abs(o.p))}</small>` : ""}</span>`)}${l.removed.map((r) => html`<span class="tg rd">${r.replace(/^بدون\s*/, "")}</span>`)}${l.note ? html`<div class="nt">📝 ${l.note}</div>` : ""}`;
 
+// زمان تقریبی به مشتری اعلام می‌شود؛ مقدار نهایی در سرور اعتبارسنجی می‌شود.
+function askEtaMinutes() {
+  return new Promise((resolve) => {
+    let settled = false;
+    const choices = [15, 20, 30, 45, 60, 90];
+    const s = sheet(html`<div class="confirm">
+      <div class="cf-ic">⏱️</div>
+      <h3>زمان تقریبی آماده‌شدن</h3>
+      <p class="mut">با پذیرش سفارش، این زمان در پیگیری مشتری نمایش داده می‌شود.</p>
+      <div class="row-btns" style="flex-wrap:wrap;gap:7px">${choices.map((n) => html`<button type="button" class="btn ghost sm" data-eta-choice="${n}">${F(n)} دقیقه</button>`)}</div>
+      <label class="fld" style="margin-top:14px"><span>زمان دلخواه (۵ تا ۲۴۰ دقیقه)</span><input data-eta type="number" inputmode="numeric" min="5" max="240" step="1" value="30" aria-label="زمان تقریبی آماده‌سازی به دقیقه"></label>
+      <p class="err" data-eta-error aria-live="polite"></p>
+      <div class="row-btns"><button class="btn" type="button" data-eta-save>تأیید و پذیرش</button><button class="btn ghost" type="button" data-close>انصراف</button></div>
+    </div>`, { label: "زمان تقریبی آماده‌سازی", onClose: () => { if (!settled) resolve(null); } });
+    const input = s.body.querySelector("[data-eta]");
+    const err = s.body.querySelector("[data-eta-error]");
+    s.body.querySelectorAll("[data-eta-choice]").forEach((b) => {
+      b.onclick = () => { input.value = b.dataset.etaChoice; err.textContent = ""; };
+    });
+    s.body.querySelector("[data-eta-save]").onclick = () => {
+      const n = Number(input.value);
+      if (!Number.isInteger(n) || n < 5 || n > 240) {
+        err.textContent = "زمان را بین ۵ تا ۲۴۰ دقیقه وارد کنید.";
+        input.focus();
+        return;
+      }
+      settled = true;
+      resolve(n);
+      s.close();
+    };
+  });
+}
+
 export async function openOrder(ctx, id, onChange) {
   const s = sheet(skeleton(4, 60), { wide: true, label: "جزئیات سفارش" });
   async function load() {
@@ -19,6 +52,7 @@ export async function openOrder(ctx, id, onChange) {
           <div>زمان ثبت<b>${dateTime(o.created_at)}</b></div>
           <div>نام یا شماره میز<b>${o.table_label || "ثبت نشده"}</b></div>
           <div>تعداد اقلام<b class="num">${F(count)} عدد</b></div>
+          ${o.estimated_ready_at ? html`<div>زمان تخمینی آماده‌شدن<b>${dateTime(o.estimated_ready_at)}</b></div>` : ""}
         </div>
         <p class="mut" style="font-size:12.5px;margin:0 0 6px">🔒 فقط اطلاعاتی که مشتری هنگام سفارش وارد کرده نمایش داده می‌شود.</p>
         ${o.lines.map((l) => html`<div class="ln">
@@ -45,10 +79,15 @@ export async function openOrder(ctx, id, onChange) {
       reason = await confirmBox({ title: `لغو سفارش #${F(o.number)}؟`, text: "این کار قابل بازگشت نیست و در سابقه سفارش ثبت می‌شود.", ok: "بله، لغو شود", danger: true, input: { label: "دلیل لغو", placeholder: "مثلاً: مواد اولیه تمام شده", required: true } });
       if (!reason) return;
     }
+    let estimatedMinutes;
+    if (to === "preparing") {
+      estimatedMinutes = await askEtaMinutes();
+      if (estimatedMinutes == null) return;
+    }
     await busy(btn, async () => {
       s.body.querySelectorAll("[data-to]").forEach((b) => (b.disabled = true));
       try {
-        await ctx.api.setOrderStatus(o.id, o.status, to, reason);
+        await ctx.api.setOrderStatus(o.id, o.status, to, reason, estimatedMinutes);
         toast(`سفارش #${F(o.number)}: ${STATUS[to].label}`);
         onChange && onChange();
         ctx.refresh();
@@ -93,13 +132,14 @@ export default {
             return html`<section class="col"><h4>${pill(c)}<span class="num mut">${F(rows.length)}</span></h4>
               ${rows.length ? rows.map((o) => html`<button class="ticket ${fresh(o) ? "fresh" : ""}" data-o="${o.id}"><div class="th"><span class="num">#${F(o.number)}</span><span class="mut num" style="font-size:12.5px;font-weight:600">${time(o.created_at)}</span></div>
                 <ul><li><span>${o.table_label || "بدون نام/میز"}</span><span class="num">${F(o.item_count || 0)} قلم</span></li></ul>
+                ${o.estimated_ready_at ? html`<div class="mut" style="font-size:12px;margin:5px 0">⏱ تخمین آماده‌شدن: ${time(o.estimated_ready_at)}</div>` : ""}
                 <div class="th"><span class="num" style="color:var(--or-ink)">${money(o.total)}</span>${o.next[0] && o.next[0] !== "cancelled" ? html`<span class="btn sm soft" data-q="${o.id}" data-from="${o.status}" data-to="${o.next[0]}" role="button">${NEXT_LABEL[o.next[0]]}</span>` : ""}</div></button>`) : html`<p class="mut" style="text-align:center;font-size:13.5px;padding:20px 0">خالی</p>`}</section>`;
           })}</div>`.s;
         } else {
           ls.innerHTML = (d.orders.length ? html`<div class="olist">${d.orders.map((o) => html`
             <button class="orow ${fresh(o) ? "fresh" : ""}" data-o="${o.id}">
               <span class="no num">#${F(o.number)}<small>${time(o.created_at)}</small></span>
-              <span class="what"><span>${o.table_label || "بدون نام/میز"} · ${F(o.item_count || 0)} قلم · ${ago(o.created_at)}</span></span>
+              <span class="what"><span>${o.table_label || "بدون نام/میز"} · ${F(o.item_count || 0)} قلم · ${ago(o.created_at)}</span>${o.estimated_ready_at ? html`<small class="mut" style="display:block;font-size:12px">⏱ آماده‌شدن حدود ${time(o.estimated_ready_at)}</small>` : ""}</span>
               <span class="amt num">${money(o.total)}</span>${pill(o.status)}
               <span class="qa">${o.next[0] && o.next[0] !== "cancelled" ? html`<span class="btn sm soft" data-q="${o.id}" data-from="${o.status}" data-to="${o.next[0]}" role="button">${NEXT_LABEL[o.next[0]]}</span>` : html`<span class="mut" style="font-size:12.5px">جزئیات ←</span>`}</span>
             </button>`)}</div>`
@@ -121,7 +161,12 @@ export default {
         e.stopPropagation();
         if (qb.dataset.busy) return;
         qb.dataset.busy = "1"; qb.classList.add("loading");
-        try { await ctx.api.setOrderStatus(qb.dataset.q, qb.dataset.from, qb.dataset.to); toast(STATUS[qb.dataset.to].label + " ✓"); ctx.refresh(); }
+        let estimatedMinutes;
+        if (qb.dataset.to === "preparing") {
+          estimatedMinutes = await askEtaMinutes();
+          if (estimatedMinutes == null) return load();
+        }
+        try { await ctx.api.setOrderStatus(qb.dataset.q, qb.dataset.from, qb.dataset.to, undefined, estimatedMinutes); toast(STATUS[qb.dataset.to].label + " ✓"); ctx.refresh(); }
         catch (err) { toast(err.message, "err"); }
         return load();
       }
