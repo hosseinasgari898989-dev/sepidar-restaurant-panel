@@ -891,3 +891,11 @@ input,textarea,select,[contenteditable="true"],[data-allow-select],pre,
 }
 button,a,[role="button"]{-webkit-tap-highlight-color:transparent}
 button:focus:not(:focus-visible),a:focus:not(:focus-visible){outline:none}
+
+
+/* محیط نمایشی عمداً از محیط واقعی متمایز است و در دارک‌مود هم خوانا می‌ماند */
+.demo-bar{position:sticky;top:0;z-index:28;display:flex;align-items:center;justify-content:space-between;gap:14px;padding:12px 16px;border:1px solid #8c6b22;border-radius:0 0 16px 16px;font-size:13px;font-weight:800;line-height:1.8;box-shadow:0 10px 30px #0002}
+.demo-bar span{min-width:0}
+.demo-bar .btn{flex:none}
+body[data-theme="dark"] .demo-bar{background:linear-gradient(110deg,var(--warn-bg),color-mix(in srgb,var(--card) 75%,var(--warn-bg)))!important;color:var(--warn)!important;border-color:#66532d!important}
+@media(max-width:520px){.demo-bar{align-items:flex-start;flex-direction:column;padding:10px 12px;gap:8px}.demo-bar .btn{width:100%}}
