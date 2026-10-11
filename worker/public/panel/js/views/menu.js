@@ -44,6 +44,11 @@ export default {
       ].join("");
       select.value = selectedPriceItemId;
       select.disabled = allItems.length === 0;
+      const customSelect = select.closest(".sp-select");
+      const customValue = customSelect?.querySelector(".sp-select-value");
+      const customTrigger = customSelect?.querySelector(".sp-select-trigger");
+      if (customValue) customValue.textContent = select.selectedOptions[0]?.textContent?.trim() || "غذای موردنظر را انتخاب کن…";
+      if (customTrigger) customTrigger.disabled = allItems.length === 0;
       el.querySelector("#priceSearchRun").disabled = allItems.length === 0;
       const current = allItems.find(({ item }) => item.id === selectedPriceItemId)?.item;
       el.querySelector("#priceSearchCurrentPrice").textContent = current ? `قیمت فعلی در سپیدار: ${money(current.price)} تومان` : "برای جستجو ابتدا یک غذا به منو اضافه کن.";
