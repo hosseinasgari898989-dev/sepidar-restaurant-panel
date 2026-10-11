@@ -141,6 +141,8 @@ export const live = {
   accessTokens: () => req("GET", "/api/panel/access-tokens"),
   createAccessToken: (b) => req("POST", "/api/panel/access-tokens", b),
   revokeAccessToken: (id) => req("DELETE", `/api/panel/access-tokens/${encodeURIComponent(id)}`),
+  cleanupAccessTokens: () => req("DELETE", "/api/panel/access-tokens/cleanup"),
+  searchPrices: (query) => req("POST", "/api/panel/ai-search", { query }),
   qr: () => req("GET", "/api/panel/qr"),
   reports: (p) => req("GET", "/api/panel/reports" + qs(p)),
 };
