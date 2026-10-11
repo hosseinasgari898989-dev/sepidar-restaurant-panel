@@ -739,3 +739,142 @@ body[data-theme="dark"] .token-state.revoked{background:#3b2229!important;color:
   .token-create-form .btn{width:100%}
 }
 
+
+/* ===== Final live audit: deeply style every modal/sheet surface in dark mode ===== */
+body[data-theme="dark"] .ov {
+  background:#02050bcc!important;
+  backdrop-filter:blur(10px)!important;
+}
+body[data-theme="dark"] .ov .sh,
+body[data-theme="dark"] .ov .sh.wide,
+body[data-theme="dark"] .ov .sh-body,
+body[data-theme="dark"] .ov [role="dialog"] {
+  background:var(--card)!important;
+  color:var(--fg)!important;
+  border-color:var(--line)!important;
+  color-scheme:dark;
+}
+body[data-theme="dark"] .ov .sh {
+  box-shadow:0 28px 90px #0009!important;
+  border:1px solid var(--line)!important;
+}
+body[data-theme="dark"] .ov .sh h1,
+body[data-theme="dark"] .ov .sh h2,
+body[data-theme="dark"] .ov .sh h3,
+body[data-theme="dark"] .ov .sh h4,
+body[data-theme="dark"] .ov .sh label,
+body[data-theme="dark"] .ov .sh .section-t,
+body[data-theme="dark"] .ov .sh .view-h p {color:var(--fg)!important}
+body[data-theme="dark"] .ov .sh .mut,
+body[data-theme="dark"] .ov .sh .fld small,
+body[data-theme="dark"] .ov .sh .form-note {color:var(--mut)!important}
+body[data-theme="dark"] .ov .sh .preview-card,
+body[data-theme="dark"] .ov .sh #pv,
+body[data-theme="dark"] .ov .sh .form-grid,
+body[data-theme="dark"] .ov .sh .checks,
+body[data-theme="dark"] .ov .sh .checks label,
+body[data-theme="dark"] .ov .sh .section-t,
+body[data-theme="dark"] .ov .sh .od-meta div,
+body[data-theme="dark"] .ov .sh .ln,
+body[data-theme="dark"] .ov .sh .tile3d,
+body[data-theme="dark"] .ov .sh .cf-ic {
+  background:var(--bg)!important;
+  color:var(--fg)!important;
+  border-color:var(--line)!important;
+}
+body[data-theme="dark"] .ov .sh .preview-card,
+body[data-theme="dark"] .ov .sh #pv {
+  background:radial-gradient(ellipse at 85% 0%,color-mix(in srgb,var(--or) 18%,transparent),transparent 55%),var(--bg)!important;
+}
+body[data-theme="dark"] .ov .sh input:not([type="checkbox"]):not([type="radio"]),
+body[data-theme="dark"] .ov .sh textarea,
+body[data-theme="dark"] .ov .sh select,
+body[data-theme="dark"] .ov .sh .inp,
+body[data-theme="dark"] .ov .sh .fld input,
+body[data-theme="dark"] .ov .sh .fld textarea,
+body[data-theme="dark"] .ov .sh .fld select,
+body[data-theme="dark"] .ov .sh .search input {
+  background:var(--bg)!important;
+  color:var(--fg)!important;
+  border-color:var(--line)!important;
+  color-scheme:dark;
+  caret-color:var(--or);
+}
+body[data-theme="dark"] .ov .sh input::placeholder,
+body[data-theme="dark"] .ov .sh textarea::placeholder {color:var(--mut)!important;opacity:1}
+body[data-theme="dark"] .ov .sh input[type="checkbox"],
+body[data-theme="dark"] .ov .sh input[type="radio"] {accent-color:var(--or)}
+body[data-theme="dark"] .ov .sh .checks label:has(input:checked) {
+  background:var(--bad-bg)!important;color:var(--bad)!important;border-color:var(--line)!important;
+}
+body[data-theme="dark"] .ov .sh .od-meta div {
+  background:var(--soft)!important;color:var(--fg)!important;
+}
+body[data-theme="dark"] .ov .sh .ln {border-top-color:var(--line)!important}
+body[data-theme="dark"] .ov .sh .tile3d {
+  background:radial-gradient(ellipse at 50% 20%,color-mix(in srgb,var(--or) 18%,transparent),transparent 68%),linear-gradient(145deg,var(--bg),var(--soft))!important;
+  border:1px solid var(--line);
+  box-shadow:inset 0 -6px 12px -6px #0005;
+}
+body[data-theme="dark"] .ov .sh .tile3d::after {background:#0007}
+body[data-theme="dark"] .ov .sh .actbar {
+  background:color-mix(in srgb,var(--card) 96%,transparent)!important;
+  color:var(--fg)!important;border-top-color:var(--line)!important;
+}
+body[data-theme="dark"] .ov .sh .sh-x {
+  background:var(--soft)!important;color:var(--fg)!important;border:1px solid var(--line)!important;
+}
+body[data-theme="dark"] .ov .sh .cf-ic {
+  background:var(--soft)!important;color:var(--or)!important;
+}
+body[data-theme="dark"] .ov .sh .note-box,
+body[data-theme="dark"] .ov .sh .srv,
+body[data-theme="dark"] .ov .sh .nt,
+body[data-theme="dark"] .ov .sh .tg {
+  background:var(--soft)!important;color:var(--fg)!important;border-color:var(--line)!important;
+}
+body[data-theme="dark"] .ov .sh .tg.rd {
+  background:#3b2229!important;color:#ffc0c8!important;border-color:#71404a!important;
+}
+body[data-theme="dark"] .ov .sh .pill.s-new {
+  background:var(--warn-bg)!important;color:var(--warn)!important;
+}
+body[data-theme="dark"] .top {
+  background:color-mix(in srgb,var(--card) 94%,transparent)!important;
+  border-bottom-color:var(--line)!important;color:var(--fg)!important;
+}
+body[data-theme="dark"] .top .icon-btn,
+body[data-theme="dark"] .top .appearance-toggle,
+body[data-theme="dark"] .top .cpill {
+  background:var(--card)!important;color:var(--fg)!important;border-color:var(--line)!important;
+}
+body[data-theme="dark"] .demo-bar {
+  background:linear-gradient(110deg,var(--warn-bg),color-mix(in srgb,var(--card) 88%,var(--warn-bg)))!important;
+  color:var(--warn)!important;border-bottom-color:var(--line)!important;
+}
+body[data-theme="dark"] .qr-wrap .card,
+body[data-theme="dark"] .qr-wrap .urlbox,
+body[data-theme="dark"] .qr-card {
+  background:var(--card)!important;color:var(--fg)!important;border-color:var(--line)!important;
+}
+body[data-theme="dark"] .qr-card canvas {
+  background:#fff!important; /* intentionally white for reliable QR scanning */
+  border:8px solid #fff!important;
+}
+body[data-theme="dark"] .qr-card .cap,
+body[data-theme="dark"] .qr-card .mut {color:var(--fg)!important}
+body[data-theme="dark"] .urlbox code {color:var(--fg)!important}
+body[data-theme="dark"] .urlbox .btn,
+body[data-theme="dark"] .row-btns .btn.ghost {
+  background:var(--soft)!important;color:var(--fg)!important;border-color:var(--line)!important;
+}
+body[data-theme="dark"] .toasts .toast {
+  background:var(--card)!important;color:var(--fg)!important;border-color:var(--line)!important;
+}
+body[data-theme="dark"] .toasts .toast.t-err {
+  background:#3b2229!important;color:#ffc0c8!important;border-color:#71404a!important;
+}
+body[data-theme="dark"] .toasts .toast.t-info {
+  background:var(--soft)!important;color:var(--fg)!important;
+}
+
