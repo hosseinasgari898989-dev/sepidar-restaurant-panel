@@ -21,7 +21,8 @@
     "PANEL_RESTAURANT_ID": "main",
     // آدرس عمومی سایت مشتریان؛ QR فقط به این آدرس ساخته می‌شود
     "PUBLIC_SITE_URL": "https://hosseinasgari898989-dev.github.io/sepidar-restaurant-platform/",
-    "SESSION_TTL_HOURS": "8"
+    "SESSION_TTL_HOURS": "8",
+    "IMAGEKIT_URL_ENDPOINT": "https://ik.imagekit.io/amup8gp0i"
   },
 
   "d1_databases": [
@@ -30,13 +31,10 @@
       "database_name": "sepidar-db",
       "database_id": "3ba9f865-95b7-4a5a-b8f6-c256601f1b3a"
     }
-  ],
-  // این binding پس از فعال‌شدن R2 و ساخت باکت sepidar-food-images آمادهٔ استفاده است.
-  "r2_buckets": [
-    { "binding": "FOOD_IMAGES", "bucket_name": "sepidar-food-images" }
   ]
 
-  // ⚠️ توکن‌های محرمانه را در این فایل ننویسید؛ فقط در Secrets ثبت شوند:
+  // ⚠️ کلیدهای محرمانه را هرگز اینجا ننویسید؛ فقط در Secrets ثبت شوند:
   // npx wrangler secret put SEPIDAR_PANEL_BOOTSTRAP_TOKEN
+  // npx wrangler secret put IMAGEKIT_PRIVATE_KEY
   // npx wrangler secret put TAVILY_API_KEY
 }
