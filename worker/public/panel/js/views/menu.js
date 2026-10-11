@@ -9,7 +9,7 @@ export default {
     el.innerHTML = html`
       <div class="view-h"><div><h2>مدیریت منو</h2><p>یک منوی مشترک: همان چیزی که مشتری در سایت سفارش می‌بیند</p></div>
         <div class="tools"><button class="btn ghost" data-newcat>🗂️ دسته جدید</button><button class="btn" data-new>＋ غذای جدید</button></div></div>
-      <div class="note-box">ℹ️ <span>تغییرات پس از ذخیره موفق در سرور، از مسیر عمومی منو برای سایت مشتریان قابل دریافت‌اند. ${ctx.capability("image_upload") && !ctx.demo ? "" : "R2 هنوز فعال نشده؛ در دسته‌های عادی می‌توان آدرس HTTPS عکس را وارد کرد، اما دسته «سایر» تا اتصال R2 فقط در حالت نمایشی قابل پیش‌نمایش است."}</span></div>
+      <div class="note-box">ℹ️ <span>تغییرات پس از ذخیره موفق در سرور، از مسیر عمومی منو برای سایت مشتریان قابل دریافت‌اند. ${ctx.capability("image_upload") && !ctx.demo ? "" : "ImageKit هنوز تنظیم نشده؛ دسته «سایر» پس از اتصال ImageKit به آپلود عکس واقعی نیاز دارد."}</span></div>
       <div class="tools" style="margin-bottom:10px"><label class="search"><span class="sr">جستجوی غذا</span><input id="q" type="search" placeholder="جستجوی غذا…" maxlength="60"></label></div>
       <div class="chips" id="cf"></div>
       <div id="mn">${skeleton(3, 180)}</div>`.s;
@@ -88,7 +88,7 @@ function itemEditor(ctx, cats, item, onSaved, catId) {
         </div>
         ${c.id !== "other" ? html`<label class="fld"><span>ایموجی <small>(برای کاشی‌های سه‌بعدی دسته‌های عادی)</small></span><input name="emoji" value="${it.emoji}" maxlength="8"></label>` : html`<div class="note-box warn full">📷 در دسته «سایر» فقط عکس واقعی نمایش داده می‌شود؛ استیکر، ایموجی و مدل سه‌بعدی خودکار غیرفعال‌اند.</div>`}
         <label class="fld full"><span>توضیحات</span><input name="description" value="${it.description}" maxlength="200"></label>
-        <label class="fld full"><span>آدرس عکس <small>(در صورت آپلود R2، خودکار پر می‌شود)</small></span><input name="image_url" value="${it.image_url}" maxlength="500" inputmode="url" dir="ltr" placeholder="https://…/media/main/…"></label>
+        <label class="fld full"><span>آدرس عکس <small>(پس از آپلود در ImageKit، خودکار پر می‌شود)</small></span><input name="image_url" value="${it.image_url}" maxlength="500" inputmode="url" dir="ltr" placeholder="https://ik.imagekit.io/amup8gp0i/sepidar/main/…"></label>
         <label class="fld full"><span>بارگذاری عکس محصول <small>JPEG / PNG / WebP / AVIF · حداکثر ۵ مگابایت</small></span><input name="image_file" type="file" accept="image/jpeg,image/png,image/webp,image/avif,.jpg,.jpeg,.png,.webp,.avif"></label>
         <small id="imageUploadHelp" class="mut full"></small><div class="full image-upload-actions"><button class="btn soft" type="button" id="uploadImage">📷 بارگذاری عکس</button><span class="mut" id="imageUploadStatus" aria-live="polite"></span></div>
         ${c.id === "other" ? html`<div class="note-box warn full">دسته «سایر» مدل سه‌بعدی خودکار ندارد؛ برای این دسته باید عکس واقعی محصول را بارگذاری کنی.</div>` : ""}
@@ -138,7 +138,7 @@ function itemEditor(ctx, cats, item, onSaved, catId) {
         }
       });
     };
-    uploadHelp.textContent = ctx.demo ? "حالت نمایشی: عکس فقط پیش‌نمایش محلی است و در سرور ذخیره نمی‌شود." : ctx.capability("image_upload") ? "پس از آپلود، عکس در R2 ذخیره و در منوی مشترک مشتری/مدیریت نمایش داده می‌شود." : "R2 هنوز در Cloudflare فعال نشده؛ آپلود واقعی تا زمان اتصال فضای ذخیره‌سازی در دسترس نیست.";
+    uploadHelp.textContent = ctx.demo ? "حالت نمایشی: عکس فقط پیش‌نمایش محلی است و در سرور ذخیره نمی‌شود." : ctx.capability("image_upload") ? "پس از آپلود، عکس در ImageKit ذخیره و در منوی مشتری/مدیریت نمایش داده می‌شود." : "ImageKit هنوز به Worker وصل نشده؛ پس از تنظیم Secret اتصال، آپلود واقعی فعال می‌شود.";
     if (!ctx.demo && !ctx.capability("image_upload")) uploadButton.disabled = true;
     const sync = () => {
       it.name = f.name.value; it.description = f.description.value; it.emoji = c.id === "other" ? "🍽️" : (f.emoji?.value || "🍽️"); it.image_url = f.image_url.value.trim(); it.price = f.price.value;
@@ -171,9 +171,9 @@ function itemEditor(ctx, cats, item, onSaved, catId) {
         reader.onerror = () => { status.textContent = "خواندن فایل عکس ناموفق بود."; };
         reader.readAsDataURL(file); return;
       }
-      if (!ctx.capability("image_upload")) { status.textContent = "برای آپلود واقعی باید R2 به Worker متصل شود."; return; }
+      if (!ctx.capability("image_upload")) { status.textContent = "برای آپلود واقعی باید Secret اتصال ImageKit در Worker تنظیم شود."; return; }
       busy(uploadButton, async () => {
-        try { const out = await ctx.api.uploadImage(file); it.image_url = out.image_url; render(); s.body.querySelector("#imageUploadStatus").textContent = "عکس در R2 ذخیره شد."; }
+        try { const out = await ctx.api.uploadImage(file); it.image_url = out.image_url; render(); s.body.querySelector("#imageUploadStatus").textContent = "عکس در ImageKit ذخیره شد."; }
         catch (err) { const el = s.body.querySelector("#imageUploadStatus"); if (el) el.textContent = err.message || "آپلود عکس ناموفق بود."; }
       });
     };
@@ -183,7 +183,7 @@ function itemEditor(ctx, cats, item, onSaved, catId) {
       if (!it.name.trim()) return (fe.textContent = "نام غذا الزامی است.");
       if (!Number.isInteger(price) || price < 0) return (fe.textContent = "قیمت باید یک عدد صحیح (تومان) باشد.");
       if (it.image_url && !/^https?:\/\//i.test(it.image_url) && !(ctx.demo && it.image_url.startsWith("data:image/"))) return (fe.textContent = "آدرس عکس باید با https:// شروع شود.");
-      if (f.category_id.value === "other" && (!it.image_url || !it.image_url.includes("/media/")) && !ctx.demo) return (fe.textContent = "برای دسته «سایر» باید عکس واقعی را در R2 بارگذاری کنید.");
+      if (f.category_id.value === "other" && (!it.image_url || !/^https:\/\/ik\.imagekit\.io\/amup8gp0i\/sepidar\//i.test(it.image_url)) && !ctx.demo) return (fe.textContent = "برای دسته «سایر» باید عکس واقعی را در ImageKit بارگذاری کنید.");
       const sdef = {};
       s.body.querySelectorAll("[data-def]").forEach((x) => { if (+x.value) sdef[x.dataset.def] = +x.value; });
       const removables = c.id === "other" ? [] : (c.removables.length ? [...s.body.querySelectorAll("[data-rm]:checked")].map((x) => x.value) : null);
