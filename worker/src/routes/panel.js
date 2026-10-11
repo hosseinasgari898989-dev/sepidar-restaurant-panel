@@ -485,7 +485,19 @@ on("POST", "/api/panel/ai-search", "menu", async ({ request, env, s }) => {
     }
     return null;
   };
-  let relevantIndexes = agentOutput ? parseAgentIndexes(agentText) : null;
+  // Workers AI may expose structured JSON under response (object) as well as the
+  // Chat Completions text under choices[0].message.content. Prefer structured data.
+  const structuredAgentResponse = [
+    agentOutput?.response,
+    agentOutput?.result?.response,
+    agentOutput?.choices?.[0]?.message?.content,
+    agentOutput?.result?.choices?.[0]?.message?.content,
+  ].find((value) => value && typeof value === "object" && Array.isArray(value.relevant_indices));
+  const sanitizeAgentIndexes = (indexes) => [...new Set(indexes.map(Number).filter((index) =>
+    Number.isInteger(index) && initialResults.some((source) => source.index === index)))];
+  let relevantIndexes = structuredAgentResponse
+    ? sanitizeAgentIndexes(structuredAgentResponse.relevant_indices)
+    : (agentOutput ? parseAgentIndexes(agentText) : null);
   let usedRuleFallback = false;
   if (!relevantIndexes) {
     // Never fail the whole search because the model returned prose instead of JSON.
