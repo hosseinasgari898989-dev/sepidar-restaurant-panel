@@ -548,7 +548,7 @@ on("POST", "/api/panel/ai-search", "menu", async ({ request, env, s }) => {
     if (at < 0) return null;
     // Parse only the immediate text after this dish name to avoid borrowing the
     // neighbouring item's price from a menu listing.
-    const nearby = normalizedPage.slice(at, at + 220);
+    const nearby = normalizedPage.slice(at, at + 140);
     return extractExplicitTomanPrice(nearby);
   };
   const nowMs = Date.now();
@@ -560,8 +560,14 @@ on("POST", "/api/panel/ai-search", "menu", async ({ request, env, s }) => {
     const age = Number.isFinite(source._date_ms) ? nowMs - source._date_ms : null;
     if (age != null && (age < -24 * 60 * 60 * 1000 || age > freshnessMs)) continue;
     const pageText = source.title + "\n" + source.snippet + "\n" + source.page_excerpt + "\n" + source._page_text;
+    const normalizedPage = normalize(pageText);
+    const normalizedDish = normalize(item.name);
+    const exactDishMention = normalizedDish.length >= 3 && normalizedPage.includes(normalizedDish);
     const menuMarkers = ["menu", "order", "ordering", "snappfood", "foodino", "delino", "سفارش آنلاین", "ثبت سفارش", "منوی رستوران", "افزودن به سبد"];
     const hasMenuMarker = menuMarkers.some((marker) => (source.url + " " + source.title + " " + source._page_text.slice(0, 1800)).toLowerCase().includes(marker.toLowerCase()));
+    const nonMenuContent = /(?:خبرگزاری|گزارش خبر|دستور پخت|طرز تهیه|مواد اولیه|نهاده(?:‌| )?(?:دام|طیور)|مرغ زنده|خوراک دام|poultry feed|recipe|raw ingredients|livestock feed|breaking news)/i.test(pageText);
+    // AI relevance alone is never sufficient: require the exact dish and actual menu/order evidence.
+    if (!exactDishMention || !hasMenuMarker || nonMenuContent) continue;
     const parsedPrice = priceNearExactFoodName(pageText, item.name);
     const priceAllowed = parsedPrice != null && (age != null || hasMenuMarker);
     results.push({
