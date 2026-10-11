@@ -405,7 +405,7 @@ on("POST", "/api/panel/ai-search", "menu", async ({ request, env, s }) => {
     target_item: { id: item.id, name: item.name, current_price: Number(item.price) || 0, category: item.category_name || item.category_id },
     answer: "",
     results,
-    warning: "فقط منابع مرتبط با نام غذا و نتایج حداکثر یک‌ساله نمایش داده می‌شوند. قیمت پیشنهادی فقط وقتی واحد تومان/ریال صریح باشد ارائه می‌شود؛ شهر، اندازه و تاریخ منبع را پیش از اعمال بررسی کن.",
+    warning: "منابع نامرتبط و نتایج قدیمیِ دارای تاریخ فیلتر می‌شوند. برای منبعی که تاریخ یا واحد پول مشخص ندارد، قیمت پیشنهادی ارائه نمی‌شود؛ شهر، اندازه و تاریخ را قبل از اعمال بررسی کن.",
     fetched_at: Date.now(),
   });
 });
