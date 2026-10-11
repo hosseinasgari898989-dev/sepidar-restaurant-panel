@@ -32,7 +32,7 @@ export default {
       mn.innerHTML = out || (cats.length ? empty("🔎", "غذایی پیدا نشد") : empty("🗂️", "منو خالی است", "ابتدا یک دسته بسازید.")).s;
     }
     const card = (c, i) => html`<article class="mcard ${i.active ? "" : "off"}" style="--c1:${safeColor(c.colors[0])};--c2:${safeColor(c.colors[1])}">
-      <button class="ph" data-ei="${i.id}" aria-label="ویرایش ${i.name}">${i.image_url ? html`<img src="${i.image_url}" alt="" loading="lazy" referrerpolicy="no-referrer">` : ""}<span class="fe">${i.emoji}</span>
+      <button class="ph" data-ei="${i.id}" aria-label="ویرایش ${i.name}">${i.image_url ? html`<img src="${i.image_url}" alt="${i.name}" loading="lazy" decoding="async" referrerpolicy="no-referrer">` : c.id === "other" ? html`<span class="other-photo-empty"><span class="icon">📷</span><small>عکس واقعی الزامی</small></span>` : html`<span class="fe">${i.emoji}</span>`}
         <span class="flags">${!i.active ? html`<span class="badge">غیرفعال</span>` : ""}${!i.available ? html`<span class="badge" style="background:#fff0f0;color:#b00">ناموجود</span>` : ""}</span></button>
       <div class="bd"><b>${i.name}</b><small>${i.description}</small><span class="pr num">${money(i.price)}</span></div>
       <div class="sw">
@@ -73,7 +73,7 @@ function itemEditor(ctx, cats, item, onSaved, catId) {
     const rem = it.removables ?? c.removables;
     s.set(html`
       <h3 style="font-size:20px;margin-bottom:12px">${isNew ? "غذای جدید" : "ویرایش غذا"}</h3>
-      <div class="preview-card" id="pv">${tile(it.emoji, c.colors, { size: "lg", img: it.image_url })}<div><b id="pvn">${it.name || "نام غذا"}</b><div class="mut" style="font-size:13px" id="pvd">${it.description || "توضیح کوتاه"}</div><b class="num" style="color:var(--or)" id="pvp">${Number.isInteger(parsePrice(it.price)) ? money(parsePrice(it.price)) : "—"}</b></div></div>
+      <div class="preview-card" id="pv">${c.id === "other" && !it.image_url ? html`<div class="other-photo-empty editor-photo-empty"><span class="icon">📷</span><small>برای پیش‌نمایش، عکس واقعی را بارگذاری کن</small></div>` : tile(it.emoji, c.colors, { size: "lg", img: it.image_url })}<div><b id="pvn">${it.name || "نام غذا"}</b><div class="mut" style="font-size:13px" id="pvd">${it.description || "توضیح کوتاه"}</div><b class="num" style="color:var(--or)" id="pvp">${Number.isInteger(parsePrice(it.price)) ? money(parsePrice(it.price)) : "—"}</b></div></div>
       <form id="f" novalidate><div class="form-grid">
         <label class="fld"><span>نام غذا</span><input name="name" value="${it.name}" maxlength="60" required></label>
         <label class="fld"><span>دسته</span><select name="category_id">${cats.map((x) => html`<option value="${x.id}" ${x.id === c.id ? "selected" : ""}>${x.emoji} ${x.name}${x.id === "other" ? " · فقط عکس واقعی" : ""}</option>`)}</select></label>
