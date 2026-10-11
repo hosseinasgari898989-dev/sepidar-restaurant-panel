@@ -5,6 +5,24 @@ const listeners = {};
 export const on = (ev, fn) => ((listeners[ev] ||= []).push(fn));
 const emit = (ev, d) => (listeners[ev] || []).forEach((f) => f(d));
 
+// فقط شناسه‌ی ناشناس این مرورگر برای محدودسازی تلاش ورود؛ توکن دسترسی در storage ذخیره نمی‌شود.
+function panelDeviceId() {
+  const name = "sepidar_admin_device_v1";
+  let fromCookie = "";
+  try { fromCookie = (document.cookie.match(new RegExp("(?:^|;\\\\s*)" + name + "=([a-f0-9]{32,64})", "i")) || [])[1] || ""; } catch {}
+  if (fromCookie) return fromCookie.toLowerCase();
+  let id = "";
+  try { id = localStorage.getItem(name) || ""; } catch {}
+  if (!/^[a-f0-9]{32,64}$/i.test(id)) {
+    try { const bytes = new Uint8Array(16); crypto.getRandomValues(bytes); id = [...bytes].map((x) => x.toString(16).padStart(2, "0")).join(""); }
+    catch { id = (Date.now().toString(16) + Math.random().toString(16).slice(2)).padEnd(32, "0").slice(0, 32); }
+  }
+  id = id.toLowerCase();
+  try { localStorage.setItem(name, id); } catch {}
+  try { document.cookie = name + "=" + id + "; Path=/; Max-Age=31536000; SameSite=Strict; Secure"; } catch {}
+  return id;
+}
+
 export class ApiError extends Error {
   constructor(kind, status, code, message, body = {}) {
     super(message);
@@ -64,7 +82,7 @@ const qs = (o = {}) => {
 export const live = {
   mode: "live",
   health: () => req("GET", "/health", null, { timeout: 8000, quiet: true }),
-  login: (token) => req("POST", "/api/panel/auth/login", { token }),
+  login: (token) => req("POST", "/api/panel/auth/login", { token, device_id: panelDeviceId() }),
   logout: () => req("POST", "/api/panel/auth/logout", {}),
   logoutAll: () => req("POST", "/api/panel/auth/logout-all", {}),
   session: () => req("GET", "/api/panel/session"),
@@ -78,10 +96,36 @@ export const live = {
   updateCategory: (id, b) => req("PATCH", `/api/panel/menu/categories/${encodeURIComponent(id)}`, b),
   deleteCategory: (id) => req("DELETE", `/api/panel/menu/categories/${encodeURIComponent(id)}`),
   createItem: (b) => req("POST", "/api/panel/menu/items", b),
+  uploadImage: async (file) => {
+    const form = new FormData();
+    form.append("file", file, file.name || "food-image");
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 45000);
+    try {
+      const res = await fetch(BASE + "/api/panel/menu/images", {
+        method: "POST", credentials: "same-origin", cache: "no-store",
+        headers: { Accept: "application/json", "X-Sepidar-Panel": "1" },
+        body: form, signal: controller.signal,
+      });
+      const data = await res.json().catch(() => null);
+      if (!res.ok || !data || data.ok === false) {
+        const err = new ApiError("http", res.status, data?.error || "image_upload_failed", data?.message || DEFAULTS[res.status] || "آپلود عکس ناموفق بود.", data || {});
+        if (res.status === 401) emit("unauth", err);
+        throw err;
+      }
+      return data;
+    } catch (e) {
+      if (e instanceof ApiError) throw e;
+      throw new ApiError("network", 0, "image_upload_failed", e.name === "AbortError" ? "آپلود عکس بیش از حد طول کشید." : "اتصال هنگام آپلود عکس قطع شد.");
+    } finally { clearTimeout(timer); }
+  },
   updateItem: (id, b) => req("PATCH", `/api/panel/menu/items/${encodeURIComponent(id)}`, b),
   deleteItem: (id) => req("DELETE", `/api/panel/menu/items/${encodeURIComponent(id)}`),
   reviews: (p) => req("GET", "/api/panel/reviews" + qs(p)),
   updateReview: (id, b) => req("PATCH", `/api/panel/reviews/${encodeURIComponent(id)}`, b),
+  banReviewAuthor: (id, b) => req("POST", `/api/panel/reviews/${encodeURIComponent(id)}/ban`, b),
+  unbanReviewAuthor: (id) => req("DELETE", `/api/panel/reviews/${encodeURIComponent(id)}/ban`),
+  deleteReview: (id) => req("DELETE", `/api/panel/reviews/${encodeURIComponent(id)}`),
   leads: (p) => req("GET", "/api/panel/leads" + qs(p)),
   lead: (id) => req("GET", `/api/panel/leads/${encodeURIComponent(id)}`),
   updateLead: (id, b) => req("PATCH", `/api/panel/leads/${encodeURIComponent(id)}`, b),
