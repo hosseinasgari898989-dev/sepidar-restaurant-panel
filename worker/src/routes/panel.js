@@ -236,6 +236,68 @@ on("POST", "/api/panel/menu/images", "menu", async ({ request, env, url, s }) =>
 
 on("GET", "/api/panel/menu", "menu", async ({ env, s }) => json({ ok: true, categories: await loadMenu(env.DB, s.restaurantId, { includeInactive: true }) }));
 
+// جستجوی قیمت از منابع وب؛ اعمال قیمت در منو همیشه با تأیید مدیر انجام می‌شود.
+on("POST", "/api/panel/ai-search", "menu", async ({ request, env, s }) => {
+  if (!env.TAVILY_API_KEY) {
+    throw new ApiError(503, "price_search_not_configured", "جستجوی واقعی هنوز کلید سرویس جستجوی وب ندارد. ابتدا TAVILY_API_KEY را در Secrets این Worker ثبت کنید.");
+  }
+  await panelMutationLimit(env, s, "ai-price-search", 20, 60 * 60 * 1000);
+  const b = await readJson(request, 2048);
+  const query = str(b.query, { min: 2, max: 180, field: "عبارت جستجو" });
+  const searchQuery = /قیمت|price|cost/i.test(query) ? query : ("قیمت روز " + query + " ایران تومان");
+  let response;
+  try {
+    response = await fetch("https://api.tavily.com/search", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        api_key: env.TAVILY_API_KEY,
+        query: searchQuery,
+        search_depth: "advanced",
+        topic: "general",
+        max_results: 6,
+        include_answer: true,
+        include_raw_content: false,
+        include_images: false,
+      }),
+      signal: AbortSignal.timeout(12000),
+    });
+  } catch {
+    throw new ApiError(502, "price_search_unreachable", "ارتباط با سرویس جستجوی وب برقرار نشد؛ دوباره تلاش کنید.");
+  }
+  if (!response.ok) {
+    // Never return provider payloads that might echo request metadata or secrets.
+    console.error("price search provider status", response.status);
+    throw new ApiError(502, "price_search_failed", "سرویس جستجوی وب پاسخ معتبر نداد؛ پیکربندی کلید سرویس را بررسی کنید.");
+  }
+  let data;
+  try { data = await response.json(); } catch { throw new ApiError(502, "price_search_invalid_response", "پاسخ جستجوی وب قابل خواندن نبود."); }
+  const candidatePrice = (text) => {
+    const raw = String(text || "");
+    const pattern = /(?:قیمت|مبلغ|تومان|ریال|price)[^\d۰-۹]{0,28}([\d۰-۹][\d۰-۹,٬،. ]{3,})/i;
+    const match = raw.match(pattern);
+    if (!match) return null;
+    const digits = match[1].replace(/[۰-۹]/g, (d) => "۰۱۲۳۴۵۶۷۸۹".indexOf(d)).replace(/[^0-9]/g, "");
+    const n = Number(digits);
+    return Number.isSafeInteger(n) && n >= 1000 && n <= 1000000000 ? n : null;
+  };
+  const results = (Array.isArray(data.results) ? data.results : []).slice(0, 6).map((item) => {
+    const title = String(item.title || "منبع قیمت").slice(0, 180);
+    const url = (() => { try { const u = new URL(item.url); return u.protocol === "https:" ? u.toString() : ""; } catch { return ""; } })();
+    const snippet = String(item.content || "").replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F]/g, "").slice(0, 1000);
+    return { title, url, snippet, published_at: item.published_date || null, candidate_price: candidatePrice(title + " " + snippet) };
+  }).filter((item) => item.url);
+  await audit(env.DB, s.restaurantId, s.actor, "price_search.query", "menu_item", null, { query: searchQuery.slice(0, 120), result_count: results.length });
+  return json({
+    ok: true,
+    query: searchQuery,
+    answer: typeof data.answer === "string" ? data.answer.slice(0, 1600) : "",
+    results,
+    warning: "قیمت‌های وب ممکن است مربوط به وزن، شهر، بسته‌بندی یا تاریخ متفاوت باشند. قبل از اعمال، منبع و جزئیات را بررسی کنید.",
+    fetched_at: Date.now(),
+  });
+});
+
 function catFields(b, partial) {
   const f = {};
   if (!partial || "name" in b) f.name = str(b.name, { max: 40, min: 1, field: "نام دسته" });
