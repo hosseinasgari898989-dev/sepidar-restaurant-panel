@@ -5,7 +5,7 @@ const parsePrice = (v) => { const n = Number(toEnDigits(String(v)).replace(/[,\s
 export default {
   id: "menu", title: "منو و غذاها", short: "منو", icon: "🍔", perm: "menu",
   render(el, ctx) {
-    let cats = [], cat = "all", q = "", selectedPriceItemId = "", lastPriceSearchItemId = "";
+    let cats = [], cat = "all", selectedPriceItemId = "", lastPriceSearchItemId = "";
     el.innerHTML = html`
       <div class="view-h"><div><h2>مدیریت منو</h2><p>یک منوی مشترک: همان چیزی که مشتری در سایت سفارش می‌بیند</p></div>
         <div class="tools"><button class="btn ghost" data-newcat>🗂️ دسته جدید</button><button class="btn" data-new>＋ غذای جدید</button></div></div>
@@ -23,8 +23,6 @@ export default {
         <p class="price-search-hint">نتایج قدیمی و نامرتبط فیلتر می‌شوند. قیمت پیشنهادی فقط وقتی واحد پول مشخص باشد نشان داده می‌شود؛ هیچ قیمتی بدون تأیید تو ذخیره نمی‌شود.</p>
         <div id="priceSearchResults" aria-live="polite"></div>
       </section>
-      <div class="tools menu-search-tools" style="margin-bottom:10px"><label class="search"><span class="sr">جستجوی غذا</span><input id="q" type="search" placeholder="جستجوی غذا در منوی خودت…" maxlength="60"></label></div>
-      <div class="tools" style="margin-bottom:10px"><label class="search"><span class="sr">جستجوی غذا</span><input id="q" type="search" placeholder="جستجوی غذا…" maxlength="60"></label></div>
       <div class="chips" id="cf"></div>
       <div id="mn">${skeleton(3, 180)}</div>`.s;
     const mn = el.querySelector("#mn");
@@ -59,8 +57,7 @@ export default {
       const shown = cats.filter((c) => cat === "all" || c.id === cat);
       let out = "";
       shown.forEach((c) => {
-        const items = c.items.filter((i) => !q || (i.name + i.description).includes(q));
-        if (q && !items.length) return;
+        const items = c.items;
         out += html`<section class="cat-section"><div class="cat-head">
           <div class="cat-head-main">
             <div class="cat-title-row"><h3>${c.emoji} ${c.name}</h3>${c.id === "other" ? html`<span class="badge photo-only-badge">📷 فقط عکس واقعی</span>` : ""}</div>
@@ -152,8 +149,6 @@ export default {
         catch (err) { toast(err.message || "ذخیرهٔ قیمت ناموفق بود.", "err"); }
       });
     };
-    let tm;
-    el.querySelector("#q").oninput = (e) => { clearTimeout(tm); tm = setTimeout(() => { q = e.target.value.trim(); draw(); }, 150); };
     load();
   },
 };
