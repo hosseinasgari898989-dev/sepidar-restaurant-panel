@@ -72,7 +72,7 @@ export const live = {
   activity: () => req("GET", "/api/panel/activity"),
   orders: (p) => req("GET", "/api/panel/orders" + qs(p)),
   order: (id) => req("GET", `/api/panel/orders/${encodeURIComponent(id)}`),
-  setOrderStatus: (id, from, to, reason) => req("POST", `/api/panel/orders/${encodeURIComponent(id)}/status`, { from, to, reason }),
+  setOrderStatus: (id, from, to, reason, estimatedMinutes) => req("POST", `/api/panel/orders/${encodeURIComponent(id)}/status`, { from, to, reason, ...(estimatedMinutes != null ? { estimated_minutes: estimatedMinutes } : {}) }),
   menu: () => req("GET", "/api/panel/menu"),
   createCategory: (b) => req("POST", "/api/panel/menu/categories", b),
   updateCategory: (id, b) => req("PATCH", `/api/panel/menu/categories/${encodeURIComponent(id)}`, b),
