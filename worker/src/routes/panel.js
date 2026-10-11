@@ -384,12 +384,14 @@ on("POST", "/api/panel/ai-search", "menu", async ({ request, env, s }) => {
   try { searchData = await searchResponse.json(); }
   catch { throw new ApiError(502, "price_search_invalid_response", "پاسخ موتور جستجو قابل خواندن نبود."); }
 
-  const normalize = (value) => String(value || "")
-    .toLocaleLowerCase("fa")
-    .replace(/ي/g, "ی").replace(/ك/g, "ک").replace(/ۀ/g, "ه")
-    .replace(/[۰-۹]/g, (digit) => String("۰۱۲۳۴۵۶۷۸۹".indexOf(digit)))
-    .replace(/[\u064B-\u065F\u0670]/g, "")
-    .replace(/[^\p{L}\p{N}]+/gu, " ").trim();
+  function normalize(value) {
+    return String(value || "")
+      .toLocaleLowerCase("fa")
+      .replace(/ي/g, "ی").replace(/ك/g, "ک").replace(/ۀ/g, "ه")
+      .replace(/[۰-۹]/g, (digit) => String("۰۱۲۳۴۵۶۷۸۹".indexOf(digit)))
+      .replace(/[\u064B-\u065F\u0670]/g, "")
+      .replace(/[^\p{L}\p{N}]+/gu, " ").trim();
+  }
   const normalizeDomain = (url) => {
     try { return new URL(url).hostname.toLowerCase().replace(/^www\./, ""); }
     catch { return ""; }
@@ -757,6 +759,8 @@ on("GET", "/api/panel/reviews", "reviews", async ({ env, s, url }) => {
   if (q) { where.push("(r.comment LIKE ? OR r.item_name LIKE ? OR r.author_name LIKE ?)"); args.push(`%${q}%`, `%${q}%`, `%${q}%`); }
   const [rows, summary, dist] = await Promise.all([
     env.DB.prepare(`SELECT r.*,
+      COALESCE(vote_counts.likes, 0) AS likes,
+      COALESCE(vote_counts.dislikes, 0) AS dislikes,
       CASE WHEN EXISTS (SELECT 1 FROM review_bans b WHERE b.restaurant_id = r.restaurant_id AND b.client_key_hash = r.client_key_hash AND (b.expires_at IS NULL OR b.expires_at > ${Date.now()})) THEN 1 ELSE 0 END AS author_banned,
       (SELECT b.expires_at FROM review_bans b WHERE b.restaurant_id = r.restaurant_id AND b.client_key_hash = r.client_key_hash AND (b.expires_at IS NULL OR b.expires_at > ${Date.now()}) LIMIT 1) AS ban_expires_at,
       (SELECT b.reason FROM review_bans b WHERE b.restaurant_id = r.restaurant_id AND b.client_key_hash = r.client_key_hash AND (b.expires_at IS NULL OR b.expires_at > ${Date.now()}) LIMIT 1) AS ban_reason
