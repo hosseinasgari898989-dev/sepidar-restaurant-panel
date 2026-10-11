@@ -73,3 +73,15 @@ Customer API integration had previously been merged at commit `e022c20760ef10250
 
 ## Immediate next file to inspect
 Continue with a single-file fetch of `worker/src/routes/panel.js` around `menu/images`, `review-bans`, `tokens`, and migration paths; then inspect the full `menu.js` upload handler. Earlier fetches were too large when several full pages were returned together, so extract only relevant sections.
+
+
+## Continuation update after mobile-app crash (2026-10-11)
+- The checkpoint was re-opened and read; work resumed from the existing branch rather than restarting.
+- Before changing admin panel selection CSS, saved the exact previous CSS at `backups/2026-10-11/panel-css-before-selection-scope-fix.css` (backup commit `ac4cb6c039f2c71907c20680afe504ee3ad7c256`).
+- Fixed an over-broad selection rule in `worker/public/panel/panel.css`: selection suppression is now limited to controls/cards/navigation and QR elements, not every element on the page. Input fields, contenteditable, code/pre, token prefix, QR URL code and explicitly selectable text remain selectable. Source blob SHA is now `8513ee2b3b060dc1e3b10648f13e48b024d01ea3`.
+- Bumped panel asset query versions in `worker/public/panel/index.html` from `20261011-demo-qr8` to `20261011-selection9` (two references); source blob SHA `f6ff14f566328647c1b325509d5bd3874accf37c`.
+- Regenerated `worker/src/lib/panel-overrides.js` from its nine mapped public assets. All nine override bodies are now byte-for-byte equal to their corresponding source assets. New map blob SHA `dffe7e96f048c6faf430b7c2c3228e4c8f85b538`.
+- Post-edit static validation passed: JavaScript parse-only checks for Worker entry/routes, override map and panel modules including menu, QR, reviews and settings; CSS brace balance is zero; the old cache version no longer exists in panel HTML. This is static validation only, not a production deployment/visual browser test.
+- Latest branch head at this point: `c9f65764a3511e217d935f6fe7d14f4daf49db39`.
+- Reminder: current `worker/wrangler.jsonc` still has no active `FOOD_IMAGES` R2 binding; do not mark uploads ready or deploy the photo feature until R2 is enabled in Cloudflare and the binding is configured.
+- Next: finish focused theme/grid audit, check API/UI route alignment, re-run validation after any edit, inspect branch diff/CI, then open draft PRs only after checks. Do not merge/deploy or write to production D1.
