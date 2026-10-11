@@ -36,7 +36,8 @@ export default {
           ${canManageTokens ? html`
             <section class="card token-manager" id="tokenManager" aria-labelledby="tokenManagerTitle">
               <div class="card-h token-manager-head">
-                <div><h3 id="tokenManagerTitle">🔑 مدیریت توکن‌های ورود</h3><p>توکن بساز، اعتبارش را انتخاب کن و هر زمان لازم بود دسترسی‌اش را لغو کن.</p></div>
+                <div><h3 id="tokenManagerTitle">🔑 مدیریت توکن‌های ورود</h3><p>توکن بساز، اعتبارش را انتخاب کن و هر زمان لازم بود دسترسی‌اش را حذف کن.</p></div>
+                <button type="button" class="btn danger ghost sm" id="cleanupAccessTokens">🧹 پاکسازی توکن‌ها</button>
               </div>
               <div class="token-create-grid">
                 <form id="tokenForm" class="token-create-form" novalidate>
@@ -96,19 +97,24 @@ export default {
       const rawToken = box.querySelector("#newAccessToken");
       const error = box.querySelector("#tokenFormError");
 
-      const fmtExpiry = (t) => !t.expires_at ? "دائمی" : t.expires_at <= Date.now() ? "منقضی‌شده" : dateTime(t.expires_at);
-      const status = (t) => t.revoked_at
-        ? ["لغوشده", "revoked"]
-        : t.expires_at && t.expires_at <= Date.now()
-          ? ["منقضی‌شده", "expired"]
-          : t.is_current
-            ? ["در حال استفاده", "current"]
+      // Compare expiry against server time, not the phone clock. A wrong device date
+      // must not label a valid one-day token as expired.
+      let serverClockOffset = 0;
+      const serverNow = () => Date.now() + serverClockOffset;
+      const fmtExpiry = (t) => !t.expires_at ? "دائمی" : t.expires_at <= serverNow() ? "منقضی‌شده" : dateTime(t.expires_at);
+      const status = (t) => t.is_current
+        ? ["توکن جاری", "current"]
+        : t.revoked_at
+          ? ["لغوشده", "revoked"]
+          : t.expires_at && t.expires_at <= serverNow()
+            ? ["منقضی‌شده", "expired"]
             : ["فعال", "active"];
 
       async function refreshTokens() {
         rows.innerHTML = '<p class="mut">در حال دریافت توکن‌ها…</p>';
         try {
           const data = await ctx.api.accessTokens();
+          if (Number.isFinite(Number(data.server_time))) serverClockOffset = Number(data.server_time) - Date.now();
           if (!data.tokens?.length) {
             rows.innerHTML = '<div class="token-empty">هنوز توکنی ساخته نشده است. از فرم بالا اولین توکن را بساز.</div>';
             return;
@@ -116,7 +122,7 @@ export default {
           rows.innerHTML = html`${data.tokens.map((t) => {
             const st = status(t);
             const roleLabel = t.role === "platform_admin" ? "مدیر سپیدار" : "رستوران‌دار";
-            const canRevoke = !t.revoked_at && !(t.expires_at && t.expires_at <= Date.now()) && !t.is_current;
+            const canRevoke = !t.is_current;
             return html`<article class="token-row">
               <div class="token-row-main">
                 <div class="token-row-title"><strong>${t.label}</strong><span class="token-state ${st[1]}">${st[0]}</span></div>
@@ -124,13 +130,13 @@ export default {
                 <div class="token-metadata"><span>${roleLabel}</span><span>اعتبار: ${fmtExpiry(t)}</span><span>ساخته‌شده: ${dateTime(t.created_at)}</span><span>آخرین استفاده: ${t.last_used_at ? dateTime(t.last_used_at) : "هنوز استفاده نشده"}</span></div>
                 ${t.is_current ? html`<small class="token-current-note">این توکن، نشست فعلی را ایجاد کرده است.</small>` : ""}
               </div>
-              <button type="button" class="btn danger ghost sm token-revoke" data-revoke-token="${t.id}" ${canRevoke ? "" : "disabled"}>${t.revoked_at ? "لغو شده" : canRevoke ? "لغو توکن" : t.is_current ? "توکن جاری" : "منقضی‌شده"}</button>
+              <button type="button" class="btn danger ghost sm token-revoke" data-revoke-token="${t.id}" ${canRevoke ? "" : "disabled"}>${t.is_current ? "توکن محافظت‌شده" : t.revoked_at ? "حذف از فهرست" : t.expires_at && t.expires_at <= serverNow() ? "حذف توکن منقضی" : "حذف / لغو توکن"}</button>
             </article>`;
           })}`.s;
           rows.querySelectorAll("[data-revoke-token]").forEach((button) => {
             button.onclick = async () => {
               const id = button.dataset.revokeToken;
-              if (!(await confirmBox({ title: "لغو این توکن؟", text: "این توکن دیگر برای ورود کار نمی‌کند و نشست‌های فعال وابسته به آن هم فوراً باطل می‌شوند. این عمل برگشت‌پذیر نیست.", ok: "بله، لغو کن", danger: true }))) return;
+              if (!(await confirmBox({ title: "حذف این توکن؟", text: "توکن از فهرست حذف می‌شود و دیگر برای ورود کار نمی‌کند؛ نشست‌های وابسته نیز باطل می‌شوند. توکن محافظت‌شدهٔ نشست فعلی حذف نمی‌شود.", ok: "حذف توکن", danger: true }))) return;
               busy(button, async () => {
                 try { await ctx.api.revokeAccessToken(id); toast("توکن لغو شد"); await refreshTokens(); }
                 catch (err) { toast(err.message, "err"); }
@@ -175,6 +181,23 @@ export default {
       };
       box.querySelector("#hideAccessToken").onclick = () => { rawToken.textContent = ""; once.hidden = true; };
       box.querySelector("#reloadAccessTokens").onclick = refreshTokens;
+      box.querySelector("#cleanupAccessTokens").onclick = async (event) => {
+        const btn = event.currentTarget;
+        const answer = await confirmBox({
+          title: "پاکسازی توکن‌های اضافی؟",
+          text: "همهٔ توکن‌های دیگر و نشست‌های وابسته حذف یا باطل می‌شوند؛ فقط توکنی که نشست فعلی یا آخرین توکن معتبر را نگه می‌دارد، محافظت می‌شود. قبل از ادامه مطمئن شو همین دسترسی را می‌خواهی نگه داری.",
+          ok: "بله، پاکسازی کن",
+          danger: true,
+        });
+        if (!answer) return;
+        busy(btn, async () => {
+          try {
+            const result = await ctx.api.cleanupAccessTokens();
+            toast("پاکسازی انجام شد؛ " + F(result.deleted || 0) + " توکن حذف شد.");
+            await refreshTokens();
+          } catch (err) { toast(err.message || "پاکسازی توکن‌ها ناموفق بود.", "err"); }
+        });
+      };
       refreshTokens();
     }
 
