@@ -98,7 +98,7 @@ export default {
     const priceSearchRegion = el.querySelector("#priceSearchRegion");
     const priceSearchRun = el.querySelector("#priceSearchRun");
     const priceSearchResults = el.querySelector("#priceSearchResults");
-    priceSearchItem.onchange = () => { selectedPriceItemId = priceSearchItem.value; drawPricePicker(); };
+    priceSearchItem.onchange = () => { selectedPriceItemId = priceSearchItem.value; lastPriceSearchItemId = ""; priceSearchResults.innerHTML = ""; drawPricePicker(); };
     priceSearchRun.onclick = async () => {
       const selected = cats.flatMap((category) => category.items.map((item) => ({ category, item }))).find(({ item }) => item.id === priceSearchItem.value);
       if (!selected) { priceSearchResults.innerHTML = html`<div class="note-box warn">ابتدا یکی از غذاهای ثبت‌شده را انتخاب کن.</div>`.s; return; }
