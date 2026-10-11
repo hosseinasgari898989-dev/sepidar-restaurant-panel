@@ -117,7 +117,6 @@ export function sheet(content, { wide = false, label = "پنجره", onClose } =
     ov.querySelectorAll("input:not([type=checkbox]):not([type=radio]),textarea,select,.inp,.fld input,.fld textarea,.fld select,.search input").forEach((el) => {
       set(el, { background: palette.bg, color: palette.fg, "border-color": palette.line, "caret-color": palette.accent, "color-scheme": "dark" });
     });
-    ov.querySelectorAll("input::placeholder,textarea::placeholder").forEach((el) => set(el, { color: palette.muted }));
 
     ov.querySelectorAll(".preview-card,#pv,.form-grid,.checks,.checks label,.section-t,.od-meta div,.ln,.tile3d,.cf-ic,.card,.stat,.optg,.optrow,.urlbox,.sh-body [role=group]").forEach((el) => {
       set(el, { background: palette.bg, color: palette.fg, "border-color": palette.line });
