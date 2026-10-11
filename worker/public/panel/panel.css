@@ -878,3 +878,16 @@ body[data-theme="dark"] .toasts .toast.t-info {
   background:var(--soft)!important;color:var(--fg)!important;
 }
 
+
+
+/* جلوگیری از انتخاب ناخواسته متن هنگام نگه‌داشتن دکمه‌ها؛ کادرهای ورودی و توکن قابل انتخاب می‌مانند */
+body,body *{
+  -webkit-user-select:none!important;user-select:none!important;
+  -webkit-touch-callout:none;-webkit-tap-highlight-color:transparent;
+}
+input,textarea,select,[contenteditable="true"],[data-allow-select],pre,
+.token-created code,.token-prefix,.selectable{
+  -webkit-user-select:text!important;user-select:text!important;-webkit-touch-callout:default;
+}
+button,a,[role="button"]{-webkit-tap-highlight-color:transparent}
+button:focus:not(:focus-visible),a:focus:not(:focus-visible){outline:none}
