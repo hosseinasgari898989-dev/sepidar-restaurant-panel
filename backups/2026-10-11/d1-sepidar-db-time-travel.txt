@@ -1,0 +1,7 @@
+Sepidar D1 pre-change recovery checkpoint
+Captured: 2026-10-11
+Database: sepidar-db
+Database UUID: 3ba9f865-95b7-4a5a-b8f6-c256601f1b3a
+Cloudflare Time Travel bookmark: 0000000b-00000000-00005101-15e76e2473ed1870eef4265707b7aa5f
+
+This checkpoint was read before applying the order tracking / ETA schema migration. Restore only deliberately through Cloudflare D1 Time Travel; a restore rewinds the database and may discard later writes.
