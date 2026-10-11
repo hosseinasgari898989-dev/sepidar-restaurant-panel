@@ -1,7 +1,7 @@
 import { ApiError, json, readJson } from "../lib/http.js";
 import { loadMenu, toCustomerCats, priceLine } from "../lib/menu.js";
 import { checkLimit, hit } from "../lib/ratelimit.js";
-import { str, int, randomId, sha256Hex } from "../lib/util.js";
+import { str, int, randomId, sha256Hex, DAY_MS } from "../lib/util.js";
 import { audit } from "../lib/auth.js";
 
 // شناسه‌ی ناشناس و پایدار مرورگر؛ IP در محدودسازی و بن عمومی استفاده/ذخیره نمی‌شود.
