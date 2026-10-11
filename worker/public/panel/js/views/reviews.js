@@ -26,11 +26,13 @@ export default {
           <div class="big-avg"><b class="num">${s.avg != null ? F(s.avg) : "—"}</b>${stars(Math.round(s.avg || 0))}<div class="mut" style="font-size:13px">${F(s.count)} نظر</div></div>
           <div><div class="dist">${[5, 4, 3, 2, 1].map((r) => html`<div><span class="num">${F(r)} ★</span><span class="bar"><span style="width:${(s.distribution[r] / max) * 100}%"></span></span><span class="num mut">${F(s.distribution[r])}</span></div>`)}</div>
           <p class="mut" style="font-size:12.5px;margin:10px 0 0">🔒 امتیازها توسط مشتری ثبت شده‌اند و قابل ویرایش نیستند. میانگین از همه امتیازها (حتی نظرهای پنهان‌شده) محاسبه می‌شود. ${F(s.hidden)} پنهان · ${F(s.flagged)} علامت‌خورده · ${F(s.replied)} پاسخ‌داده‌شده</p></div></div>`.s;
-        el.querySelector("#ls").innerHTML = (d.reviews.length ? html`${d.reviews.map((r) => html`<article class="rv ${r.visibility === "hidden" ? "hid" : ""}" data-id="${r.id}">
+        el.querySelector("#ls").innerHTML = (d.reviews.length ? html`${d.reviews.map((r) => html`<article class="rv ${r.visibility === "hidden" ? "hid" : ""} ${r.featured ? "rv-featured rv-feature-" + (["glow", "shine", "burst"].includes(r.feature_style) ? r.feature_style : "glow") : ""}" data-id="${r.id}">
           <div class="rv-h">${stars(r.rating)}<b>${r.author_name || "مشتری"}</b><span class="mut" style="font-size:12.5px">${date(r.created_at, { year: "numeric" })} · ${ago(r.created_at)}</span>
             ${r.item_name ? html`<span class="tg">🍽️ ${r.item_name}</span>` : ""}${r.order_number ? html`<span class="badge num">سفارش #${F(r.order_number)}</span>` : ""}
             ${r.visibility === "hidden" ? html`<span class="badge">پنهان از سایت</span>` : ""}${r.flagged ? html`<span class="badge" style="background:#fff0f0;color:#b00">🚩 ${r.flag_reason || "نامناسب"}</span>` : ""}${r.author_banned ? html`<span class="badge" style="background:#fff0f0;color:#b00">⛔ نویسنده مسدود است</span>` : ""}</div>
-          ${r.comment ? html`<p>${r.comment}</p>` : html`<p class="mut">بدون متن؛ فقط امتیاز ثبت شده.</p>`}
+          ${r.featured ? html`<div class="rv-featured-status"><span class="rv-featured-mark">✦</span><div><b>جلوه ویژه فعال است</b><small>این ظاهر در سایت مشتریان هم نمایش داده می‌شود.</small></div><span class="rv-feature-style-tag">${({ glow: "درخشش", shine: "تابش نور", burst: "ستاره‌باران" })[r.feature_style] || "درخشش"}</span></div>` : ""}
+          ${r.comment ? html`<p class="rv-review-text ${r.featured ? "rv-review-featured-text" : ""}">${r.comment}</p>` : html`<p class="mut rv-review-text">بدون متن؛ فقط امتیاز ثبت شده.</p>`}
+          <div class="rv-vote-summary"><span>👍 پسندیدند: <b>${F(r.likes || 0)}</b></span><span>👎 نپسندیدند: <b>${F(r.dislikes || 0)}</b></span></div>
           ${r.reply ? html`<div class="reply"><b>پاسخ رستوران</b> <span class="mut" style="font-size:12px">${r.reply_at ? ago(r.reply_at) : ""}</span><div>${r.reply}</div></div>` : ""}
           <div class="rv-act">
             <button class="btn sm ghost" data-a="vis">${r.visibility === "hidden" ? "👁️ انتشار دوباره" : "🙈 پنهان‌کردن"}</button>
