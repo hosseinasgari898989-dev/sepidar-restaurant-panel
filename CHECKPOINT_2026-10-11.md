@@ -70,3 +70,15 @@ Then continue from the first unresolved issue with tests and small commits.
 - Updated panel UI messages/placeholders from R2 to ImageKit.
 - **Not deployed or interactively tested.** Static JavaScript parsing passed, and the JSONC parses. The private key is not present in Git and has not been configured in Cloudflare. Before controlled preview, add Worker Secret `IMAGEKIT_PRIVATE_KEY`; then test actual upload, response URL, image display in panel/customer site, and `other` category save. Do not merge/deploy until verified.
 - Current ImageKit endpoint in `worker/wrangler.jsonc` is `https://ik.imagekit.io/amup8gp0i`; the default-image URL supplied during setup is not an uploaded asset to use as the restaurant's actual food photo.
+
+
+## Hotfixes deployed — 2026-10-11 13:58 UTC
+- Worker redeployed from current `main` sources with API version `2026-10-panel-3`; Cloudflare health returned `ready`, all expected bindings present, and latest version assigned 100% traffic.
+- Rebuilt `PANEL_OVERRIDES` to pin the current 17 admin UI assets (including menu editor and panel.css) instead of serving stale embedded menu/CSS. This addresses the prior mismatch where live UI still contained old R2 text/validation despite the ImageKit backend.
+- Main menu editor now validates the category `other` image against a full ImageKit file URL under `/amup8gp0i/sepidar/{restaurantId}/...`, not the R2 `/media/` path. Category `other` hides emoji/model/customization/removal fields and saves empty metadata/removables.
+- Added responsive category header/category badge layout and mobile price-search result styles; current main menu JS and all Worker modules passed static syntax checks.
+- Customer main now has a floating burger without plate markup; category row is non-sticky; instruction hint is compact; long-press text selection/callout is disabled except in edit fields; optional 3D-effect values are retained during menu normalization. Latest customer inline JS passed static syntax parsing and public GitHub Pages serves the updated hint.
+- Review vote POST now accepts `text/plain` JSON to avoid CORS preflight, validates Origin if present, and the customer frontend sends the simple request. GET reviews live API was verified; **no interactive POST vote test was possible**, so the vote error still needs the owner to tap 👍 after refresh.
+- Live `/health` returned `2026-10-panel-3`, `ready`, with `image_upload: true`; review GET endpoint returns expected rows/counts. No authenticated ImageKit upload was exercised in this verification, so ask the owner to upload a real file from the panel and save the Other item to confirm end-to-end.
+- AI price-search UI is included in the pinned menu JS and the backend route exists, but secret `TAVILY_API_KEY` is absent; real web search will return a setup warning until owner adds that Worker Secret.
+- TinyFish browser wallet balance was negative at check time, so visual browser automation could not be run. Static checks and HTTP GET tests are not a substitute for tap-through mobile regression tests.
