@@ -78,16 +78,16 @@ function itemEditor(ctx, cats, item, onSaved, catId) {
         <label class="fld"><span>نام غذا</span><input name="name" value="${it.name}" maxlength="60" required></label>
         <label class="fld"><span>دسته</span><select name="category_id">${cats.map((x) => html`<option value="${x.id}" ${x.id === c.id ? "selected" : ""}>${x.emoji} ${x.name}${x.id === "other" ? " · فقط عکس واقعی" : ""}</option>`)}</select></label>
         <label class="fld"><span>قیمت پایه <small>(تومان)</small></span><input name="price" value="${it.price === "" ? "" : F(it.price).replace(/٬/g, "")}" inputmode="numeric" required></label>
-        <label class="fld"><span>ایموجی <small>(دسته‌های عادی بدون عکس، مدل سه‌بعدی دارند؛ «سایر» فقط عکس واقعی می‌پذیرد)</small></span><input name="emoji" value="${it.emoji}" maxlength="8"></label>
+        ${c.id !== "other" ? html`<label class="fld"><span>ایموجی <small>(برای کاشی‌های سه‌بعدی دسته‌های عادی)</small></span><input name="emoji" value="${it.emoji}" maxlength="8"></label>` : html`<div class="note-box warn full">📷 در دسته «سایر» فقط عکس واقعی نمایش داده می‌شود؛ استیکر، ایموجی و مدل سه‌بعدی خودکار غیرفعال‌اند.</div>`}
         <label class="fld full"><span>توضیحات</span><input name="description" value="${it.description}" maxlength="200"></label>
         <label class="fld full"><span>آدرس عکس <small>(در صورت آپلود R2، خودکار پر می‌شود)</small></span><input name="image_url" value="${it.image_url}" maxlength="500" inputmode="url" dir="ltr" placeholder="https://…/media/main/…"></label>
         <label class="fld full"><span>بارگذاری عکس محصول <small>JPEG / PNG / WebP / AVIF · حداکثر ۵ مگابایت</small></span><input name="image_file" type="file" accept="image/jpeg,image/png,image/webp,image/avif,.jpg,.jpeg,.png,.webp,.avif"></label>
         <small id="imageUploadHelp" class="mut full"></small><div class="full image-upload-actions"><button class="btn soft" type="button" id="uploadImage">📷 بارگذاری عکس</button><span class="mut" id="imageUploadStatus" aria-live="polite"></span></div>
         ${c.id === "other" ? html`<div class="note-box warn full">دسته «سایر» مدل سه‌بعدی خودکار ندارد؛ برای این دسته باید عکس واقعی محصول را بارگذاری کنی.</div>` : ""}
       </div>
-      ${c.options.some((g) => g.type === "one") ? html`<div class="section-t">⚙️ گزینه پیش‌فرض این غذا</div><p class="mut" style="font-size:13px;margin:0 0 8px">قیمت پایه برای همین گزینه‌هاست؛ تغییر آن توسط مشتری، اختلاف قیمت را اعمال می‌کند (مثل برگر مرغ با پروتئین مرغ).</p>
+      ${c.id !== "other" && c.options.some((g) => g.type === "one") ? html`<div class="section-t">⚙️ گزینه پیش‌فرض این غذا</div><p class="mut" style="font-size:13px;margin:0 0 8px">قیمت پایه برای همین گزینه‌هاست؛ تغییر آن توسط مشتری، اختلاف قیمت را اعمال می‌کند (مثل برگر مرغ با پروتئین مرغ).</p>
         <div class="form-grid">${c.options.map((g, gi) => g.type === "one" ? html`<label class="fld"><span>${g.t}</span><select data-def="${gi}">${g.list.map((o, oi) => html`<option value="${oi}" ${((it.meta.s || {})[gi] || 0) === oi ? "selected" : ""}>${o[0]}${o[1] ? ` (${o[1] > 0 ? "+" : "−"}${F(Math.abs(o[1]))})` : ""}</option>`)}</select></label>` : "")}</div>` : ""}
-      ${c.removables.length ? html`<div class="section-t">✂️ مواد قابل حذف برای این غذا</div><p class="mut" style="font-size:13px;margin:0 0 8px">فقط موارد انتخاب‌شده به مشتری نمایش داده می‌شوند. فهرست کلی را در «دسته و گزینه‌ها» مدیریت کنید.</p>
+      ${c.id !== "other" && c.removables.length ? html`<div class="section-t">✂️ مواد قابل حذف برای این غذا</div><p class="mut" style="font-size:13px;margin:0 0 8px">فقط موارد انتخاب‌شده به مشتری نمایش داده می‌شوند. فهرست کلی را در «دسته و گزینه‌ها» مدیریت کنید.</p>
         <div class="checks">${c.removables.map((r) => html`<label><input type="checkbox" data-rm value="${r}" ${rem.includes(r) ? "checked" : ""}>${r}</label>`)}</div>` : ""}
       <div class="section-t">👁️ وضعیت</div>
       <div style="display:flex;gap:18px;flex-wrap:wrap"><button type="button" class="tog" role="switch" aria-checked="${it.active}" data-sw="active"><i></i>نمایش در منو</button><button type="button" class="tog" role="switch" aria-checked="${it.available}" data-sw="available"><i></i>موجود است</button></div>
@@ -100,7 +100,8 @@ function itemEditor(ctx, cats, item, onSaved, catId) {
     uploadHelp.textContent = ctx.demo ? "حالت نمایشی: عکس فقط پیش‌نمایش محلی است و در سرور ذخیره نمی‌شود." : ctx.capability("image_upload") ? "پس از آپلود، عکس در R2 ذخیره و در منوی مشترک مشتری/مدیریت نمایش داده می‌شود." : "R2 هنوز در Cloudflare فعال نشده؛ آپلود واقعی تا زمان اتصال فضای ذخیره‌سازی در دسترس نیست.";
     if (!ctx.demo && !ctx.capability("image_upload")) uploadButton.disabled = true;
     const sync = () => {
-      it.name = f.name.value; it.description = f.description.value; it.emoji = f.emoji.value || "🍽️"; it.image_url = f.image_url.value.trim(); it.price = f.price.value;
+      it.name = f.name.value; it.description = f.description.value; it.emoji = c.id === "other" ? "🍽️" : (f.emoji?.value || "🍽️"); it.image_url = f.image_url.value.trim(); it.price = f.price.value;
+      if (c.id === "other") { it.model_url = ""; it.meta = {}; it.removables = []; }
       s.body.querySelector("#pvn").textContent = it.name || "نام غذا";
       s.body.querySelector("#pvd").textContent = it.description || "توضیح کوتاه";
       const p = parsePrice(it.price);
@@ -109,7 +110,14 @@ function itemEditor(ctx, cats, item, onSaved, catId) {
     };
     f.oninput = (e) => { if (e.target.name === "category_id") return; sync(); };
     f.image_url.onchange = () => { sync(); render(); };
-    f.category_id.onchange = () => { sync(); it.category_id = f.category_id.value; it.meta = { ...it.meta, s: {} }; it.removables = null; render(); };
+    f.category_id.onchange = () => {
+      const nextCategory = f.category_id.value;
+      sync();
+      it.category_id = nextCategory;
+      if (nextCategory === "other") { it.emoji = "🍽️"; it.model_url = ""; it.meta = {}; it.removables = []; }
+      else { it.meta = { ...it.meta, s: {} }; it.removables = null; }
+      render();
+    };
     s.body.querySelectorAll("[data-sw]").forEach((b) => (b.onclick = () => { it[b.dataset.sw] = !it[b.dataset.sw]; b.setAttribute("aria-checked", it[b.dataset.sw]); }));
     uploadButton.onclick = async () => {
       const file = f.querySelector('[name="image_file"]').files?.[0];
@@ -137,8 +145,8 @@ function itemEditor(ctx, cats, item, onSaved, catId) {
       if (f.category_id.value === "other" && (!it.image_url || !it.image_url.includes("/media/")) && !ctx.demo) return (fe.textContent = "برای دسته «سایر» باید عکس واقعی را در R2 بارگذاری کنید.");
       const sdef = {};
       s.body.querySelectorAll("[data-def]").forEach((x) => { if (+x.value) sdef[x.dataset.def] = +x.value; });
-      const removables = c.removables.length ? [...s.body.querySelectorAll("[data-rm]:checked")].map((x) => x.value) : null;
-      const body = { name: it.name.trim(), category_id: f.category_id.value, price, emoji: it.emoji, description: it.description.trim(), image_url: it.image_url || null, active: it.active, available: it.available, meta: { ...it.meta, s: sdef }, removables };
+      const removables = c.id === "other" ? [] : (c.removables.length ? [...s.body.querySelectorAll("[data-rm]:checked")].map((x) => x.value) : null);
+      const body = { name: it.name.trim(), category_id: f.category_id.value, price, emoji: it.emoji, description: it.description.trim(), image_url: it.image_url || null, model_url: c.id === "other" ? null : (it.model_url || null), active: it.active, available: it.available, meta: c.id === "other" ? {} : { ...it.meta, s: sdef }, removables };
       busy(s.body.querySelector("#sv"), async () => {
         try {
           isNew ? await ctx.api.createItem(body) : await ctx.api.updateItem(item.id, body);
@@ -164,9 +172,9 @@ function catEditor(ctx, cat, onSaved) {
   const collect = () => {
     const b = s.body;
     if (isNew) c.id = b.querySelector("[name=id]").value.trim().toLowerCase();
-    c.name = b.querySelector("[name=name]").value; c.emoji = b.querySelector("[name=emoji]").value;
+    c.name = b.querySelector("[name=name]").value; c.emoji = c.id === "other" ? "📷" : (b.querySelector("[name=emoji]")?.value || "🍽️");
     c.colors = [b.querySelector("[name=c1]").value, b.querySelector("[name=c2]").value];
-    c.options = [...b.querySelectorAll(".optg")].map((g) => ({ t: g.querySelector("[data-gt]").value, type: g.querySelector("[data-gy]").value, list: [...g.querySelectorAll(".optrow")].map((r) => [r.querySelector("[data-on]").value, r.querySelector("[data-op]").value]) }));
+    c.options = c.id === "other" ? [] : [...b.querySelectorAll(".optg")].map((g) => ({ t: g.querySelector("[data-gt]").value, type: g.querySelector("[data-gy]").value, list: [...g.querySelectorAll(".optrow")].map((r) => [r.querySelector("[data-on]").value, r.querySelector("[data-op]").value]) }));
   };
   const render = () => {
     s.set(html`
@@ -175,20 +183,21 @@ function catEditor(ctx, cat, onSaved) {
       <div class="form-grid">
         ${isNew ? html`<label class="fld"><span>شناسه لاتین <small>(مثل pasta)</small></span><input name="id" value="${c.id}" dir="ltr" maxlength="32" pattern="[a-z][a-z0-9-]+"></label>` : html`<input type="hidden" name="id" value="${c.id}">`}
         <label class="fld"><span>نام دسته</span><input name="name" value="${c.name}" maxlength="40"></label>
-        <label class="fld"><span>ایموجی</span><input name="emoji" value="${c.emoji}" maxlength="8"></label>
+        ${c.id !== "other" ? html`<label class="fld"><span>ایموجی دسته</span><input name="emoji" value="${c.emoji}" maxlength="8"></label>` : html`<div class="note-box warn full">📷 «سایر» همیشه عکس واقعی می‌خواهد و گزینه‌های استیکر/ایموجی در آن غیرفعال‌اند.</div>`}
         <label class="fld"><span>رنگ‌های پس‌زمینه کاشی</span><span style="display:flex;gap:8px"><input type="color" name="c1" value="${safeColor(c.colors[0])}" style="padding:4px;height:46px"><input type="color" name="c2" value="${safeColor(c.colors[1])}" style="padding:4px;height:46px"></span></label>
       </div>
+      ${c.id === "other" ? html`<div class="note-box warn full">در دسته «سایر» گروه‌های شخصی‌سازی و مواد قابل حذف غیرفعال‌اند؛ مشتری فقط عکس واقعی محصول را می‌بیند و انتخاب می‌کند.</div>` : html`
       <div class="section-t">⚙️ گروه‌های شخصی‌سازی</div>
-      <p class="mut" style="font-size:13px;margin:0 0 10px">«تک‌انتخابی» مثل سایز یا نوع خمیر؛ «چندانتخابی» مثل افزودنی‌ها. قیمت مثبت = گران‌تر، منفی = ارزان‌تر. در گروه تک‌انتخابی اولین گزینه پیش‌فرض است.</p>
+      <p class="mut" style="font-size:13px;margin:0 0 10px">«تک‌انتخابی» مثل سایز یا نوع نان؛ «چندانتخابی» مثل افزودنی‌ها. قیمت مثبت = گران‌تر، منفی = ارزان‌تر. تغییرها را از همین پنل انجام بده؛ نیازی به ویرایش کد نیست.</p>
       <div id="groups">${c.options.map((g, gi) => html`<div class="optg" data-g="${gi}">
-        <div class="gh"><input data-gt value="${g.t}" placeholder="عنوان گروه (مثلاً سایز)" maxlength="60"><select data-gy><option value="one" ${g.type === "one" ? "selected" : ""}>تک‌انتخابی</option><option value="many" ${g.type === "many" ? "selected" : ""}>چندانتخابی</option></select><button class="icon-btn" data-dg="${gi}" aria-label="حذف گروه">🗑️</button></div>
+        <div class="gh"><input data-gt value="${g.t}" placeholder="عنوان گروه (مثلاً نوع پروتئین)" maxlength="60"><select data-gy><option value="one" ${g.type === "one" ? "selected" : ""}>تک‌انتخابی</option><option value="many" ${g.type === "many" ? "selected" : ""}>چندانتخابی</option></select><button class="icon-btn" data-dg="${gi}" aria-label="حذف گروه">🗑️</button></div>
         ${g.list.map((o, oi) => html`<div class="optrow"><input data-on value="${o[0]}" placeholder="نام گزینه" maxlength="60" aria-label="نام گزینه"><input data-op value="${o[1]}" inputmode="numeric" dir="ltr" aria-label="قیمت اضافه (تومان)" placeholder="0"><button class="icon-btn" data-do="${gi}:${oi}" aria-label="حذف گزینه">✕</button></div>`)}
         <button class="btn sm ghost" data-ao="${gi}">＋ گزینه</button></div>`)}</div>
       <button class="btn sm soft" data-ag>＋ گروه شخصی‌سازی</button>
       <div class="section-t">✂️ مواد قابل حذف</div>
       <div class="checks" id="rms">${c.removables.map((r, i) => html`<span class="chip">${r}<button class="x" data-dr="${i}" aria-label="حذف ${r}" style="border:0;background:none;color:#b00">✕</button></span>`)}</div>
-      <div style="display:flex;gap:8px;margin-top:8px"><input class="inp" id="nr" placeholder="مثلاً: بدون پیاز" maxlength="40"><button class="btn sm ghost" data-ar>افزودن</button></div>
-      <p class="err" id="fe"></p>
+      <div style="display:flex;gap:8px;margin-top:8px"><input class="inp" id="nr" placeholder="مثلاً: بدون مرغ یا بدون سوسیس" maxlength="40"><button class="btn sm ghost" data-ar>افزودن</button></div>
+      `}      <p class="err" id="fe"></p>
       <div class="actbar"><button class="btn" id="sv">${isNew ? "ساخت دسته" : "ذخیره دسته"}</button>${!isNew ? html`<button class="btn danger ghost" id="del" style="flex:0 0 auto">🗑️ حذف دسته</button>` : ""}</div>`);
   };
   s.body.onclick = async (e) => {
@@ -213,7 +222,7 @@ function catEditor(ctx, cat, onSaved) {
         if (list.some((o) => !Number.isInteger(o[1]))) return (fe.textContent = `قیمت‌های گروه «${g.t}» باید عدد صحیح باشند.`);
         options.push({ t: g.t.trim(), type: g.type, list });
       }
-      const body = { name: c.name.trim(), emoji: c.emoji || "🍽️", colors: c.colors, options, removables: c.removables };
+      const body = { name: c.name.trim(), emoji: c.id === "other" ? "📷" : (c.emoji || "🍽️"), colors: c.colors, options: c.id === "other" ? [] : options, removables: c.id === "other" ? [] : c.removables };
       return busy(b, async () => {
         try { isNew ? await ctx.api.createCategory({ id: c.id, ...body }) : await ctx.api.updateCategory(cat.id, body); toast("دسته ذخیره شد"); s.close(); onSaved(); }
         catch (err) { fe.textContent = err.message; }
