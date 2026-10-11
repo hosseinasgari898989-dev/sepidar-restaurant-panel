@@ -11,10 +11,13 @@ export async function loadMenu(db, restaurantId, { includeInactive = false } = {
     name: c.name,
     emoji: c.emoji,
     colors: [c.color1 || "#ffe0c2", c.color2 || "#ffb36b"],
-    options: parseJson(c.options, []),
-    removables: parseJson(c.removables, []),
+    // The system "other" category is photo-only; ignore any stale customization metadata.
+    options: c.id === "other" ? [] : parseJson(c.options, []),
+    removables: c.id === "other" ? [] : parseJson(c.removables, []),
     sort: c.sort,
-    items: items.filter((i) => i.category_id === c.id).map(itemOut),
+    items: items.filter((i) => i.category_id === c.id).map((i) => c.id === "other"
+      ? { ...itemOut(i), emoji: "📷", model_url: "", meta: {}, removables: [] }
+      : itemOut(i)),
   }));
 }
 
@@ -45,9 +48,9 @@ export function toCustomerCats(menu) {
     n: c.name,
     e: c.emoji,
     c: c.colors,
-    opts: c.options,
-    rem: c.removables,
-    items: c.items.map((i) => [i.name, i.description, i.price, i.emoji, i.image_url, i.model_url, { ...i.meta, id: i.id, ...(i.available ? {} : { na: 1 }), ...(i.removables ? { rm: i.removables } : {}) }]),
+    opts: c.id === "other" ? [] : c.options,
+    rem: c.id === "other" ? [] : c.removables,
+    items: c.items.map((i) => [i.name, i.description, i.price, c.id === "other" ? "📷" : i.emoji, i.image_url, c.id === "other" ? "" : i.model_url, { ...(c.id === "other" ? {} : i.meta), id: i.id, ...(i.available ? {} : { na: 1 }), ...(c.id === "other" ? {} : (i.removables ? { rm: i.removables } : {})) }]),
   })).filter((c) => c.items.length);
 }
 
