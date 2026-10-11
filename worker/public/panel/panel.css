@@ -528,3 +528,42 @@ body[data-theme="dark"] .login-art{background:radial-gradient(ellipse at 76% 50%
 body[data-theme="dark"] .btn.danger{color:#fff!important}
 body[data-theme="dark"] .rv.hid{background:var(--soft)!important;border-color:var(--line)!important;color:var(--mut)}
 body[data-theme="dark"] .note-box.warn{background:var(--warn-bg)!important;color:var(--warn)!important;border-color:var(--line)}
+
+
+/* ===== اصلاح چیدمان QR در موبایل: جلوگیری از بزرگ‌شدن ستون به‌خاطر لینک بلند ===== */
+.qr-wrap,.qr-wrap>* ,.qr-wrap>.grid,.qr-wrap .grid,.qr-wrap .card{min-width:0;max-width:100%}
+.qr-wrap{width:100%;grid-template-columns:minmax(0,300px) minmax(0,1fr);gap:20px}
+.qr-wrap>.grid{width:100%;grid-template-columns:minmax(0,1fr)}
+.qr-card{width:min(300px,100%);min-width:0;max-width:100%;margin-inline:auto;transform:none}
+.qr-card canvas{display:block;max-width:100%;height:auto;margin-inline:auto}
+.urlbox{width:100%;min-width:0;max-width:100%;box-sizing:border-box}
+.urlbox code{display:block;flex:1 1 0;min-width:0;width:0;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.phone{width:min(280px,100%);max-width:100%;min-width:0;margin:10px auto 0;transform:none;box-sizing:border-box}
+.phone iframe{display:block;width:100%;max-width:100%;min-width:0}
+@media(max-width:980px){
+  html,body,#root{max-width:100%;min-width:0}
+  .app{display:block!important;width:100%!important;max-width:100%!important;min-width:0!important;grid-template-columns:minmax(0,1fr)!important;overflow-x:clip}
+  .main{display:flex;width:100%!important;max-width:100%!important;min-width:0!important;overflow-x:clip}
+  .view{display:block;width:100%!important;max-width:100%!important;min-width:0!important;box-sizing:border-box;padding:16px 14px calc(136px + env(safe-area-inset-bottom));overflow-x:clip}
+  .qr-wrap{display:grid;grid-template-columns:minmax(0,1fr)!important;width:100%;min-width:0;max-width:100%;gap:16px;overflow-x:clip}
+  .qr-wrap>* ,.qr-wrap>.grid,.qr-wrap .grid,.qr-wrap .card{width:100%;min-width:0;max-width:100%;box-sizing:border-box}
+  .qr-wrap>.grid{display:grid;grid-template-columns:minmax(0,1fr);gap:14px}
+  .qr-card{width:min(300px,100%);padding:16px;transform:none!important}
+  .qr-card canvas{width:100%;max-width:100%;height:auto}
+  .urlbox{display:flex;width:100%;min-width:0;gap:6px;padding:8px;direction:ltr;overflow:hidden}
+  .urlbox code{flex:1 1 0;min-width:0;width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12px}
+  .urlbox .btn{flex:none;padding-inline:8px;font-size:12px}
+  .row-btns{max-width:100%;flex-wrap:wrap}
+  .row-btns>.btn,.row-btns>a{flex:1 1 130px;min-width:0;white-space:normal}
+  .phone{width:min(280px,100%);height:min(500px,62dvh);min-height:360px;max-width:100%;margin:10px auto 0;padding:10px;transform:none!important}
+  .phone iframe{width:100%;height:100%;border-radius:24px}
+  .bnav{display:grid!important;position:fixed!important;left:0!important;right:0!important;bottom:0!important;width:100vw!important;max-width:100vw!important;box-sizing:border-box;z-index:40}
+}
+@media(max-width:480px){
+  .view{padding-inline:12px;padding-bottom:calc(142px + env(safe-area-inset-bottom))}
+  .qr-card{border-radius:22px;padding:13px}
+  .qr-wrap .card{padding:12px}
+  .phone{min-height:320px;height:58dvh}
+  .view-h h2{font-size:21px}
+}
+
