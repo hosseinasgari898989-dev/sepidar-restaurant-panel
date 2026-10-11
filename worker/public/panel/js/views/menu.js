@@ -126,7 +126,7 @@ export default {
             <div class="price-search-warning">${result.warning || "منبع، شهر، تاریخ و واحد پول را پیش از هر تغییری بررسی کن."}</div>
             ${results.length ? results.map((source) => html`<article class="price-search-result" data-source-title="${source.title}">
               <a href="${source.url}" target="_blank" rel="noopener noreferrer">${source.title || "منبع قیمت"} ↗</a>
-              <small>${source.published_at ? "تاریخ منبع: " + new Date(source.published_at).toLocaleDateString("fa-IR") : "تاریخ انتشار مشخص نیست"}</small>
+              <small>${source.price_note || (source.published_at ? "تاریخ منبع: " + new Date(source.published_at).toLocaleDateString("fa-IR") : "تاریخ انتشار مشخص نیست")}</small>
               <p>${source.snippet || "برای جزئیات، منبع را باز کن."}</p>
               <div class="price-search-apply">
                 ${source.candidate_price ? html`<strong>${money(source.candidate_price)} تومان</strong><button type="button" class="btn sm" data-apply-price="${source.candidate_price}" data-apply-item="${result.target_item?.id || selected.item.id}" data-selected-item="${selected.item.id}">اعمال به این غذا</button>` : html`<span class="mut price-search-no-price">قیمت قابل‌اعتماد با واحد مشخص از این منبع استخراج نشد.</span>`}
