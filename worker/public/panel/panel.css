@@ -880,13 +880,13 @@ body[data-theme="dark"] .toasts .toast.t-info {
 
 
 
-/* جلوگیری از انتخاب ناخواسته متن هنگام نگه‌داشتن دکمه‌ها؛ کادرهای ورودی و توکن قابل انتخاب می‌مانند */
-body,body *{
+/* جلوگیری از انتخاب ناخواسته هنگام نگه‌داشتن کنترل‌ها و کارت‌ها؛ متن عادی صفحه همچنان قابل انتخاب است */
+body :is(button,a,.btn,.card,.stat,.chip,.rv,.qr-card,.badge,.bnav,.side,.top,.view-h){
   -webkit-user-select:none!important;user-select:none!important;
   -webkit-touch-callout:none;-webkit-tap-highlight-color:transparent;
 }
 input,textarea,select,[contenteditable="true"],[data-allow-select],pre,
-.token-created code,.token-prefix,.selectable{
+.token-created code,.token-prefix,.urlbox code,.selectable{
   -webkit-user-select:text!important;user-select:text!important;-webkit-touch-callout:default;
 }
 button,a,[role="button"]{-webkit-tap-highlight-color:transparent}
