@@ -97,7 +97,7 @@ function r2MediaKey(imageUrl, expectedOrigin) {
   try {
     const u = new URL(imageUrl);
     if (u.origin !== expectedOrigin || u.search || u.hash) return null;
-    const match = u.pathname.match(/^\\/media\\/([a-z0-9-]{1,40}\\/[A-Za-z0-9_-]{20,80}\\.(?:jpg|png|webp|avif))$/);
+    const match = u.pathname.match(/^\/media\/([a-z0-9-]{1,40}\/[A-Za-z0-9_-]{20,80}\.(?:jpg|png|webp|avif))$/);
     return match ? match[1] : null;
   } catch { return null; }
 }
