@@ -28,6 +28,7 @@ const ACT = {
   "access_token.cleanup": (d) => ["🧹", "پاکسازی توکن‌ها انجام شد", "لغو‌شده: " + F(d?.revoked || 0) + " · حذف‌شده: " + F(d?.deleted || 0)],
   "menu.image_upload": (d) => ["📷", "عکس واقعی غذا بارگذاری شد", d?.type ? "قالب: " + d.type.replace("image/", "").toUpperCase() : ""],
   "auth.login_failed": () => ["⚠️", "تلاش ناموفق برای ورود", "توکن معتبر نبود یا دسترسی آن لغو شده است."],
+  "price_search.query": (d) => ["🔎", "جستجوی قیمت روز انجام شد", d?.result_count != null ? F(d.result_count) + " منبع پیدا شد" : "منابع وب بررسی شدند."],
 };
 const FRIENDLY_ACTIONS = {
   "menu.category_delete": ["🗂️", "یک دسته از منو حذف شد"],
