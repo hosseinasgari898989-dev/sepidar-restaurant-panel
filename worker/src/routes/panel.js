@@ -194,6 +194,7 @@ function catFields(b, partial) {
 }
 
 on("POST", "/api/panel/menu/categories", "menu", async ({ request, env, s }) => {
+  await restaurantCreateLimit(env, s, "menu-category-create", 20, DAY_MS);
   const b = await readJson(request);
   const id = str(b.id, { max: 32, min: 1, field: "شناسه دسته" }).toLowerCase();
   if (!/^[a-z][a-z0-9-]{1,31}$/.test(id)) throw new ApiError(422, "validation_error", "شناسه دسته باید با حروف لاتین کوچک، عدد یا خط تیره باشد.");
@@ -446,6 +447,7 @@ on("GET", "/api/panel/access-tokens", "platform_settings", async ({ env, s }) =>
 });
 
 on("POST", "/api/panel/access-tokens", "platform_settings", async ({ request, env, s }) => {
+  await restaurantCreateLimit(env, s, "access-token-create", 10, 60 * 60 * 1000);
   const b = await readJson(request, 4096);
   const label = str(b.label, { max: 80, min: 2, field: "نام توکن" });
   const role = oneOf(b.role, ["platform_admin", "owner"], "نوع دسترسی");
