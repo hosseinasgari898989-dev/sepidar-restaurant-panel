@@ -684,3 +684,58 @@ body[data-theme="dark"] .login-art .mark {background:var(--card)!important;color
 body[data-theme="dark"] .skel {background:linear-gradient(90deg,var(--soft) 25%,var(--card) 50%,var(--soft) 75%)!important;background-size:200% 100%}
 body[data-theme="dark"] .appearance-menu p {color:var(--mut)!important}
 
+
+/* ===== مدیریت توکن‌ها: ساخت، مشاهده‌ی یک‌باره و لغو ===== */
+.token-manager{margin-top:18px;overflow:hidden}
+.token-manager-head{align-items:flex-start}
+.token-manager-head p{margin:4px 0 0;color:var(--mut);font-size:13px}
+.token-create-grid{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:16px;align-items:start}
+.token-create-form{display:grid;gap:12px;align-content:start;padding:14px;border:1px solid var(--line);border-radius:18px;background:var(--bg)}
+.token-create-form .fld{min-width:0}
+.token-create-form .btn{justify-self:start}
+.token-help{font-size:12px;line-height:1.85;color:var(--mut);margin:0}
+.token-created{min-width:0;display:grid;gap:10px;padding:16px;border:1px solid var(--or);border-radius:18px;background:var(--soft);color:var(--fg)}
+.token-created[hidden]{display:none!important}
+.token-created strong{font-size:13px}
+.token-created code{display:block;min-width:0;max-width:100%;padding:12px;border-radius:12px;border:1px dashed var(--line);background:var(--card);color:var(--fg);font:600 13px/1.8 ui-monospace,monospace;overflow-wrap:anywhere;word-break:break-word;user-select:all}
+.token-created small{font-size:11.5px;line-height:1.9;color:var(--mut)}
+.token-list-head{display:flex;align-items:center;justify-content:space-between;gap:10px;margin:20px 0 10px}
+.token-list-head h4{font-size:15px;margin:0}
+#accessTokenRows{display:grid;gap:10px;min-width:0}
+.token-empty{padding:18px;border:1px dashed var(--line);border-radius:16px;background:var(--bg);color:var(--mut);text-align:center;font-size:13px}
+.token-row{display:flex;align-items:center;justify-content:space-between;gap:14px;min-width:0;padding:14px;border:1px solid var(--line);border-radius:16px;background:var(--card)}
+.token-row-main{min-width:0;display:grid;gap:6px}
+.token-row-title{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.token-row-title strong{font-size:14px;overflow-wrap:anywhere}
+.token-prefix{justify-self:start;max-width:100%;padding:3px 8px;background:var(--bg);border:1px solid var(--line);border-radius:8px;font:600 12px ui-monospace,monospace;color:var(--or-ink);overflow-wrap:anywhere}
+.token-metadata{display:flex;flex-wrap:wrap;gap:4px 14px;color:var(--mut);font-size:11.5px;line-height:1.8}
+.token-state{display:inline-flex;align-items:center;justify-content:center;border-radius:99px;padding:2px 9px;font-size:10.5px;font-weight:800;white-space:nowrap;border:1px solid transparent}
+.token-state.active{background:var(--ok-bg);color:var(--ok)}
+.token-state.current{background:var(--soft);color:var(--or-ink);border-color:var(--or)}
+.token-state.expired{background:var(--warn-bg);color:var(--warn)}
+.token-state.revoked{background:var(--bad-bg);color:var(--bad)}
+.token-current-note{font-size:11px;color:var(--mut)}
+.token-revoke{flex:none;min-width:104px}
+.token-revoke[disabled]{opacity:.55;cursor:not-allowed;transform:none;box-shadow:none}
+.token-bottom-note{margin-top:12px}
+body[data-theme="dark"] .token-create-form,
+body[data-theme="dark"] .token-row,
+body[data-theme="dark"] .token-empty,
+body[data-theme="dark"] .token-created,
+body[data-theme="dark"] .token-created code,
+body[data-theme="dark"] .token-prefix{
+  background:var(--card)!important;color:var(--fg)!important;border-color:var(--line)!important;
+}
+body[data-theme="dark"] .token-created{border-color:var(--or)!important;background:var(--soft)!important}
+body[data-theme="dark"] .token-created code{background:var(--bg)!important}
+body[data-theme="dark"] .token-state.active{background:#17382b!important;color:#a6f0c2!important;border-color:#2b6046!important}
+body[data-theme="dark"] .token-state.current{background:var(--soft)!important;color:var(--or-ink)!important;border-color:var(--or)!important}
+body[data-theme="dark"] .token-state.expired{background:var(--warn-bg)!important;color:var(--warn)!important;border-color:var(--line)!important}
+body[data-theme="dark"] .token-state.revoked{background:#3b2229!important;color:#ffc0c8!important;border-color:#71404a!important}
+@media(max-width:760px){
+  .token-create-grid{grid-template-columns:minmax(0,1fr)}
+  .token-row{align-items:flex-start;flex-direction:column}
+  .token-revoke{align-self:stretch;width:100%}
+  .token-create-form .btn{width:100%}
+}
+
