@@ -74,3 +74,24 @@ Next inspect `worker/public/panel/js/views/reviews.js`, admin review GET route a
 - Cloudflare deployment created: `a2d25920-e071-4bec-b443-e1ac12038297`; active version `fcaee164-9ee6-49bb-a571-d91372724672` at 100% traffic. Live `/health` verified `version: 2026-10-panel-15`, `status: ready`, database/auth/reviews/image upload capabilities present.
 - D1 read-only check confirmed `review_votes` rows exist; current restaurant has two recent reviews with one like each and zero dislikes. Querying the same aggregate shape returns counts. No review rows/votes were modified or deleted during debugging.
 - Remaining verification: a full authenticated click test of AI search and the admin review page still needs a real signed-in panel browser session. TinyFish currently has no saved sign-in for this panel. After refreshing the live panel, confirm one price search and that 👍/👎 totals appear on the corresponding review; do not claim the authenticated workflow was end-to-end tested based only on /health.
+
+
+## ✅ UPDATE — AI Search fully removed (2026-10-11)
+
+User requested removing AI Search altogether instead of spending more time fixing it. The removal is complete in source and the live Worker:
+- Removed the full AI price-search workspace and all price-search event handlers from `worker/public/panel/js/views/menu.js`.
+- Removed the client wrapper `searchPrices` from `worker/public/panel/js/api.js`.
+- Removed the complete `POST /api/panel/ai-search` handler, Tavily calls, Cloudflare AI classification, price candidate generation, and search audit from `worker/src/routes/panel.js`.
+- Removed AI price-search CSS from `worker/public/panel/panel.css`.
+- Synchronized pinned live-asset entries in `worker/src/lib/panel-overrides.js` exactly with the updated source files (menu view, API client, CSS); this avoids old UI being served from the static override map.
+- Removed the unused Workers AI `AI` binding and TAVILY setup reference from `worker/wrangler.jsonc`. Existing Tavily secret was not altered; no code in the new Worker uses it.
+- Bumped health marker to `2026-10-panel-16` in `worker/src/index.js`.
+- Normal menu text search (`id="q"`), menu loading, item/category editing, price editing by the manager, image upload, reviews, review featured effects, and review vote totals remain. No D1 rows or votes were changed by this removal.
+
+### Verification
+- Cloudflare deployment: `92bed032-4426-4d7f-8d7d-9c63454e71da`.
+- Active version: `5fa5f8e3-3f2a-4e7b-9b7e-0214a4f8c450` (version #106) at 100% traffic.
+- Live `/health` returned `version: 2026-10-panel-16`, `status: ready`; database, auth, menu, reviews, review replies, reports, image upload, and QR capabilities remained enabled.
+- Pre-deployment and repository checks confirmed no AI-search route, client method, UI identifiers, or AI-search CSS remain in the deployed Worker bundle/source assets; review API still selects both `likes` and `dislikes`.
+- Verified pinned override bodies for `/panel/js/views/menu.js`, `/panel/js/api.js`, and `/panel/panel.css` match their source files byte-for-byte.
+- Parsed the edited menu JavaScript successfully. A signed-in click-through could not be run because TinyFish has no saved panel login, but static asset, deployed bundle, active version, and health checks all passed.
