@@ -1,4 +1,4 @@
-import { ApiError, json, readJson } from "../lib/http.js";
+import { ApiError, json, readJson, allowedOrigins } from "../lib/http.js";
 import { loadMenu, toCustomerCats, priceLine } from "../lib/menu.js";
 import { checkLimit, hit } from "../lib/ratelimit.js";
 import { str, int, randomId, sha256Hex, DAY_MS } from "../lib/util.js";
@@ -9,6 +9,18 @@ async function clientIdentity(body) {
   const id = str(body.client_id, { min: 32, max: 64, field: "شناسه ناشناس مرورگر" });
   if (!/^[a-f0-9]{32,64}$/i.test(id)) throw new ApiError(422, "invalid_client_id", "شناسه مرورگر معتبر نیست؛ صفحه را تازه‌سازی کنید.");
   return sha256Hex("sepidar-client-v1:" + id.toLowerCase());
+}
+async function readVoteBody(request) {
+  const length = Number(request.headers.get("Content-Length") || 0);
+  if (length > 2048) throw new ApiError(413, "payload_too_large", "حجم واکنش بیش از حد مجاز است.");
+  const contentType = (request.headers.get("Content-Type") || "").toLowerCase();
+  if (!contentType.startsWith("text/plain") && !contentType.includes("application/json")) throw new ApiError(415, "unsupported_media_type", "قالب واکنش معتبر نیست.");
+  const text = await request.text();
+  if (text.length > 2048) throw new ApiError(413, "payload_too_large", "حجم واکنش بیش از حد مجاز است.");
+  let body;
+  try { body = JSON.parse(text); } catch { throw new ApiError(400, "invalid_json", "اطلاعات رأی معتبر نیست."); }
+  if (!body || typeof body !== "object" || Array.isArray(body)) throw new ApiError(400, "invalid_json", "اطلاعات رأی معتبر نیست.");
+  return body;
 }
 const limitKey = (name, clientHash, window = "") => `pub:${name}:${clientHash.slice(0, 36)}${window ? ":" + window : ""}`;
 async function enforceClientLimits(db, name, clientHash, policies) {
@@ -117,9 +129,11 @@ export async function handlePublic(request, env, url, headers) {
 
   // هر مرورگر برای هر نظر فقط یک واکنش دارد؛ تغییر رأی، مقدار قبلی را جایگزین می‌کند.
   if (method === "POST" && sub === "reviews" && parts.length === 7 && parts[6] === "vote") {
+    const origin = request.headers.get("Origin");
+    if (origin && !allowedOrigins(env).includes(origin)) throw new ApiError(403, "origin_not_allowed", "مبدأ این درخواست مجاز نیست.");
     const reviewId = String(parts[5] || "").slice(0, 80);
     if (!reviewId) throw new ApiError(404, "review_not_found", "نظر پیدا نشد.");
-    const b = await readJson(request, 2048);
+    const b = await readVoteBody(request);
     const clientHash = await clientIdentity(b);
     const vote = oneOf(b.vote, ["like", "dislike"], "نوع واکنش");
     const limits = [
