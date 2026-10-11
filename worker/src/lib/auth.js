@@ -77,34 +77,51 @@ export async function login(request, env) {
 
   const body = await readJson(request, 2048);
   const token = typeof body.token === "string" ? body.token.trim() : "";
-  const ok = token.length > 0 && token.length <= 256 && (await safeEqual(token, env.SEPIDAR_PANEL_BOOTSTRAP_TOKEN));
+  const tokenWellFormed = token.length > 0 && token.length <= 256;
+  const t = Date.now();
+  const tokenHash = tokenWellFormed ? await sha256Hex(token) : "";
+  const accessToken = tokenWellFormed
+    ? await db.prepare("SELECT id, token_prefix, restaurant_id, role, expires_at FROM access_tokens WHERE token_hash = ? AND revoked_at IS NULL AND (expires_at IS NULL OR expires_at > ?)").bind(tokenHash, t).first()
+    : null;
+  const bootstrapOk = !accessToken && tokenWellFormed && await safeEqual(token, env.SEPIDAR_PANEL_BOOTSTRAP_TOKEN);
+  const ok = Boolean(accessToken || bootstrapOk);
 
   if (!ok) {
     await hit(db, key, LOGIN_LIMIT);
     await hit(db, "login:global", GLOBAL_LIMIT);
     await audit(db, null, "anonymous", "auth.login_failed", null, null, null);
     // پیام عمومی؛ هیچ جزئیاتی از دلیل رد شدن افشا نمی‌شود
-    throw new ApiError(401, "invalid_credentials", "توکن معتبر نیست یا دسترسی شما تأیید نشده است.");
+    throw new ApiError(401, "invalid_credentials", "توکن معتبر نیست، منقضی شده یا دسترسی آن لغو شده است.");
   }
   await clear(db, key);
 
-  const restaurantId = env.PANEL_RESTAURANT_ID || "main";
+  const restaurantId = accessToken?.restaurant_id || env.PANEL_RESTAURANT_ID || "main";
+  const role = accessToken?.role || "platform_admin";
   const restaurant = await db.prepare("SELECT id, name FROM restaurants WHERE id = ?").bind(restaurantId).first();
   if (!restaurant) throw new ApiError(503, "restaurant_not_provisioned", "اطلاعات رستوران هنوز در پایگاه داده ثبت نشده است.");
 
+  if (accessToken) {
+    await db.prepare("UPDATE access_tokens SET last_used_at = ? WHERE id = ?").bind(t, accessToken.id).run();
+  }
   const sid = randomId(32);
-  const t = Date.now();
-  const exp = t + ttlMs(env);
-  await db.prepare("INSERT INTO sessions (id_hash, restaurant_id, role, created_at, expires_at, last_seen_at, ip_hash, user_agent) VALUES (?, ?, ?, ?, ?, ?, ?, ?)")
-    .bind(await sha256Hex(sid), restaurantId, "platform_admin", t, exp, t, key.slice(6), (request.headers.get("User-Agent") || "").slice(0, 160))
+  // توکن‌های مدیریتی عمر طولانی دارند؛ نشست تا ۳۰ روز می‌ماند یا تا پایان اعتبار توکن (هرکدام زودتر).
+  // توکن اولیه‌ی اضطراری محیط سرور همچنان نشست کوتاه ۸ساعته دارد.
+  const sessionTtl = accessToken
+    ? Math.max(1, Math.min(30 * 86400000, accessToken.expires_at == null ? 30 * 86400000 : accessToken.expires_at - t))
+    : ttlMs(env);
+  const exp = t + sessionTtl;
+  const isBootstrap = !accessToken;
+  await db.prepare("INSERT INTO sessions (id_hash, restaurant_id, role, created_at, expires_at, last_seen_at, ip_hash, user_agent, bootstrap, access_token_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
+    .bind(await sha256Hex(sid), restaurantId, role, t, exp, t, key.slice(6), (request.headers.get("User-Agent") || "").slice(0, 160), isBootstrap ? 1 : 0, accessToken?.id || null)
     .run();
-  // نشست‌های منقضی‌شده قدیمی را پاک کن
+  // نشست‌های منقضی‌شده‌ی قدیمی را پاک کن؛ نشست‌های توکن لغوشده نیز دیگر قابل استفاده نیستند.
   await db.prepare("DELETE FROM sessions WHERE expires_at < ?").bind(t - 7 * 86400000).run();
-  await audit(db, restaurantId, "bootstrap_admin", "auth.login", null, null, null);
+  await audit(db, restaurantId, isBootstrap ? "bootstrap_admin" : role, "auth.login", null, null, { token_id: accessToken?.id || null, token_prefix: accessToken?.token_prefix || null });
 
+  const perms = ROLE_PERMS[role] || [];
   return {
-    cookie: cookieHeader(sid, Math.floor(ttlMs(env) / 1000)),
-    session: { role: "platform_admin", permissions: ROLE_PERMS.platform_admin, expires_at: exp, restaurant: { id: restaurant.id, name: restaurant.name }, bootstrap: true },
+    cookie: cookieHeader(sid, Math.floor(sessionTtl / 1000)),
+    session: { role, permissions: perms, expires_at: exp, restaurant: { id: restaurant.id, name: restaurant.name }, bootstrap: isBootstrap, access_token_prefix: accessToken?.token_prefix || null },
   };
 }
 
@@ -113,15 +130,15 @@ export async function requireSession(request, env, perm) {
   const sid = readCookie(request);
   if (!sid || sid.length > 100) throw new ApiError(401, "unauthenticated", "برای ادامه وارد شوید.");
   const t = Date.now();
-  const row = await env.DB.prepare("SELECT id_hash, restaurant_id, role, expires_at, last_seen_at FROM sessions WHERE id_hash = ? AND revoked_at IS NULL AND expires_at > ?")
-    .bind(await sha256Hex(sid), t).first();
+  const row = await env.DB.prepare("SELECT s.id_hash, s.restaurant_id, s.role, s.expires_at, s.last_seen_at, s.bootstrap, s.access_token_id FROM sessions s LEFT JOIN access_tokens a ON a.id = s.access_token_id WHERE s.id_hash = ? AND s.revoked_at IS NULL AND s.expires_at > ? AND (s.access_token_id IS NULL OR (a.id IS NOT NULL AND a.revoked_at IS NULL AND (a.expires_at IS NULL OR a.expires_at > ?)))")
+    .bind(await sha256Hex(sid), t, t).first();
   if (!row) throw new ApiError(401, "session_expired", "نشست شما به پایان رسیده است. دوباره وارد شوید.");
   const perms = ROLE_PERMS[row.role] || [];
   if (perm && !perms.includes(perm)) throw new ApiError(403, "forbidden", "شما به این بخش دسترسی ندارید.");
   if (!row.last_seen_at || t - row.last_seen_at > 60000) {
     await env.DB.prepare("UPDATE sessions SET last_seen_at = ? WHERE id_hash = ?").bind(t, row.id_hash).run();
   }
-  return { idHash: row.id_hash, restaurantId: row.restaurant_id, role: row.role, permissions: perms, expiresAt: row.expires_at, actor: row.role === "platform_admin" ? "bootstrap_admin" : "owner" };
+  return { idHash: row.id_hash, restaurantId: row.restaurant_id, role: row.role, permissions: perms, expiresAt: row.expires_at, bootstrap: Boolean(row.bootstrap), accessTokenId: row.access_token_id || null, actor: row.bootstrap ? "bootstrap_admin" : row.role === "platform_admin" ? "platform_admin" : "owner" };
 }
 
 export async function logout(request, env, all = false) {

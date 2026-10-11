@@ -87,6 +87,9 @@ export const live = {
   updateLead: (id, b) => req("PATCH", `/api/panel/leads/${encodeURIComponent(id)}`, b),
   settings: () => req("GET", "/api/panel/settings"),
   updateSettings: (b) => req("PATCH", "/api/panel/settings", b),
+  accessTokens: () => req("GET", "/api/panel/access-tokens"),
+  createAccessToken: (b) => req("POST", "/api/panel/access-tokens", b),
+  revokeAccessToken: (id) => req("DELETE", `/api/panel/access-tokens/${encodeURIComponent(id)}`),
   qr: () => req("GET", "/api/panel/qr"),
   reports: (p) => req("GET", "/api/panel/reports" + qs(p)),
 };
