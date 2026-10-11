@@ -9,7 +9,7 @@ export default {
     el.innerHTML = html`
       <div class="view-h"><div><h2>مدیریت منو</h2><p>یک منوی مشترک: همان چیزی که مشتری در سایت سفارش می‌بیند</p></div>
         <div class="tools"><button class="btn ghost" data-newcat>🗂️ دسته جدید</button><button class="btn" data-new>＋ غذای جدید</button></div></div>
-      <div class="note-box">ℹ️ <span>تغییرات پس از ذخیره موفق در سرور، از مسیر عمومی منو برای سایت مشتریان قابل دریافت‌اند. ${ctx.capability("image_upload") && !ctx.demo ? "" : "آپلود مستقیم عکس هنوز به فضای ذخیره‌سازی (R2) وصل نیست؛ فعلاً آدرس اینترنتی عکس را وارد کنید."}</span></div>
+      <div class="note-box">ℹ️ <span>تغییرات پس از ذخیره موفق در سرور، از مسیر عمومی منو برای سایت مشتریان قابل دریافت‌اند. ${ctx.capability("image_upload") && !ctx.demo ? "" : "R2 هنوز فعال نشده؛ در دسته‌های عادی می‌توان آدرس HTTPS عکس را وارد کرد، اما دسته «سایر» تا اتصال R2 فقط در حالت نمایشی قابل پیش‌نمایش است."}</span></div>
       <div class="tools" style="margin-bottom:10px"><label class="search"><span class="sr">جستجوی غذا</span><input id="q" type="search" placeholder="جستجوی غذا…" maxlength="60"></label></div>
       <div class="chips" id="cf"></div>
       <div id="mn">${skeleton(3, 180)}</div>`.s;
@@ -76,9 +76,9 @@ function itemEditor(ctx, cats, item, onSaved, catId) {
       <div class="preview-card" id="pv">${tile(it.emoji, c.colors, { size: "lg", img: it.image_url })}<div><b id="pvn">${it.name || "نام غذا"}</b><div class="mut" style="font-size:13px" id="pvd">${it.description || "توضیح کوتاه"}</div><b class="num" style="color:var(--or)" id="pvp">${Number.isInteger(parsePrice(it.price)) ? money(parsePrice(it.price)) : "—"}</b></div></div>
       <form id="f" novalidate><div class="form-grid">
         <label class="fld"><span>نام غذا</span><input name="name" value="${it.name}" maxlength="60" required></label>
-        <label class="fld"><span>دسته</span><select name="category_id">${cats.map((x) => html`<option value="${x.id}" ${x.id === c.id ? "selected" : ""}>${x.emoji} ${x.name}</option>`)}</select></label>
+        <label class="fld"><span>دسته</span><select name="category_id">${cats.map((x) => html`<option value="${x.id}" ${x.id === c.id ? "selected" : ""}>${x.emoji} ${x.name}${x.id === "other" ? " · فقط عکس واقعی" : ""}</option>`)}</select></label>
         <label class="fld"><span>قیمت پایه <small>(تومان)</small></span><input name="price" value="${it.price === "" ? "" : F(it.price).replace(/٬/g, "")}" inputmode="numeric" required></label>
-        <label class="fld"><span>ایموجی <small>(وقتی عکس ندارد، سه‌بعدی نمایش داده می‌شود)</small></span><input name="emoji" value="${it.emoji}" maxlength="8"></label>
+        <label class="fld"><span>ایموجی <small>(دسته‌های عادی بدون عکس، مدل سه‌بعدی دارند؛ «سایر» فقط عکس واقعی می‌پذیرد)</small></span><input name="emoji" value="${it.emoji}" maxlength="8"></label>
         <label class="fld full"><span>توضیحات</span><input name="description" value="${it.description}" maxlength="200"></label>
         <label class="fld full"><span>آدرس عکس <small>(در صورت آپلود R2، خودکار پر می‌شود)</small></span><input name="image_url" value="${it.image_url}" maxlength="500" inputmode="url" dir="ltr" placeholder="https://…/media/main/…"></label>
         <label class="fld full"><span>بارگذاری عکس محصول <small>JPEG / PNG / WebP / AVIF · حداکثر ۵ مگابایت</small></span><input name="image_file" type="file" accept="image/jpeg,image/png,image/webp,image/avif,.jpg,.jpeg,.png,.webp,.avif"></label>
