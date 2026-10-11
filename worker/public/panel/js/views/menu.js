@@ -95,16 +95,16 @@ function itemEditor(ctx, cats, item, onSaved, catId) {
           <p class="mut price-search-hint">قیمت‌ها همراه با منبع نمایش داده می‌شوند. قیمت را بررسی کن و فقط در صورت تأیید خودت وارد فیلد کن.</p>
           <div id="priceSearchResults" aria-live="polite"></div>
         </div>
-        <label class="fld"><span>ایموجی <small>(دسته‌های عادی بدون عکس، مدل سه‌بعدی دارند؛ «سایر» فقط عکس واقعی می‌پذیرد)</small></span><input name="emoji" value="${it.emoji}" maxlength="8"></label>
+        ${c.id !== "other" ? html`<label class="fld"><span>ایموجی / نماد غذا</span><input name="emoji" value="${it.emoji}" maxlength="8"></label>` : html`<div class="note-box warn full">📷 دسته «سایر» فقط عکس واقعی می‌پذیرد؛ مدل سه‌بعدی، ایموجی و شخصی‌سازی برای این دسته خاموش است.</div>`}
         <label class="fld full"><span>توضیحات</span><input name="description" value="${it.description}" maxlength="200"></label>
         <label class="fld full"><span>آدرس عکس <small>(بعد از آپلود در ImageKit خودکار پر می‌شود)</small></span><input name="image_url" value="${it.image_url}" maxlength="500" inputmode="url" dir="ltr" placeholder="https://ik.imagekit.io/amup8gp0i/sepidar/main/…"></label>
         <label class="fld full"><span>بارگذاری عکس محصول <small>JPEG / PNG / WebP / AVIF · حداکثر ۵ مگابایت</small></span><input name="image_file" type="file" accept="image/jpeg,image/png,image/webp,image/avif,.jpg,.jpeg,.png,.webp,.avif"></label>
         <small id="imageUploadHelp" class="mut full"></small><div class="full image-upload-actions"><button class="btn soft" type="button" id="uploadImage">📷 بارگذاری عکس</button><span class="mut" id="imageUploadStatus" aria-live="polite"></span></div>
         ${c.id === "other" ? html`<div class="note-box warn full">دسته «سایر» مدل سه‌بعدی خودکار ندارد؛ برای این دسته باید عکس واقعی محصول را بارگذاری کنی.</div>` : ""}
       </div>
-      ${c.options.some((g) => g.type === "one") ? html`<div class="section-t">⚙️ گزینه پیش‌فرض این غذا</div><p class="mut" style="font-size:13px;margin:0 0 8px">قیمت پایه برای همین گزینه‌هاست؛ تغییر آن توسط مشتری، اختلاف قیمت را اعمال می‌کند (مثل برگر مرغ با پروتئین مرغ).</p>
+      ${c.id !== "other" && c.options.some((g) => g.type === "one") ? html`<div class="section-t">⚙️ گزینه پیش‌فرض این غذا</div><p class="mut" style="font-size:13px;margin:0 0 8px">قیمت پایه برای همین گزینه‌هاست؛ تغییر آن توسط مشتری، اختلاف قیمت را اعمال می‌کند (مثل برگر مرغ با پروتئین مرغ).</p>
         <div class="form-grid">${c.options.map((g, gi) => g.type === "one" ? html`<label class="fld"><span>${g.t}</span><select data-def="${gi}">${g.list.map((o, oi) => html`<option value="${oi}" ${((it.meta.s || {})[gi] || 0) === oi ? "selected" : ""}>${o[0]}${o[1] ? ` (${o[1] > 0 ? "+" : "−"}${F(Math.abs(o[1]))})` : ""}</option>`)}</select></label>` : "")}</div>` : ""}
-      ${c.removables.length ? html`<div class="section-t">✂️ مواد قابل حذف برای این غذا</div><p class="mut" style="font-size:13px;margin:0 0 8px">فقط موارد انتخاب‌شده به مشتری نمایش داده می‌شوند. فهرست کلی را در «دسته و گزینه‌ها» مدیریت کنید.</p>
+      ${c.id !== "other" && c.removables.length ? html`<div class="section-t">✂️ مواد قابل حذف برای این غذا</div><p class="mut" style="font-size:13px;margin:0 0 8px">فقط موارد انتخاب‌شده به مشتری نمایش داده می‌شوند. فهرست کلی را در «دسته و گزینه‌ها» مدیریت کنید.</p>
         <div class="checks">${c.removables.map((r) => html`<label><input type="checkbox" data-rm value="${r}" ${rem.includes(r) ? "checked" : ""}>${r}</label>`)}</div>` : ""}
       <div class="section-t">👁️ وضعیت</div>
       <div style="display:flex;gap:18px;flex-wrap:wrap"><button type="button" class="tog" role="switch" aria-checked="${it.active}" data-sw="active"><i></i>نمایش در منو</button><button type="button" class="tog" role="switch" aria-checked="${it.available}" data-sw="available"><i></i>موجود است</button></div>
