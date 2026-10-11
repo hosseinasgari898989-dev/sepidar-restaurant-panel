@@ -432,34 +432,34 @@ button.stat{cursor:pointer}
    رنگ انتخاب‌شده روی پس‌زمینه، کارت‌ها، ورودی‌ها، منو و تأکیدها اثر می‌گذارد.
    ========================================================= */
 body[data-theme="light"][data-accent="orange"]{
-  color-scheme:light;--bg:#fff8f1;--card:#fffdf9;--fg:#202820;--mut:#71776d;--line:#eddfd1;
+  color-scheme:light;--bg:#fff0e3;--card:#fffaf4;--fg:#202820;--mut:#71776d;--line:#f0cbb3;
   --or:#eb672d;--or2:#ffad58;--or-ink:#a84218;--soft:#fff0e4;--soft2:#ffe3ce;
   --sh1:0 1px 0 #eddfd1,0 10px 24px -12px #eb672d20;--sh2:0 18px 40px -16px #eb672d35;
 }
 body[data-theme="light"][data-accent="mint"]{
-  color-scheme:light;--bg:#f1faf6;--card:#fcfffd;--fg:#1b2c25;--mut:#63776d;--line:#d6ece1;
+  color-scheme:light;--bg:#e8f7ef;--card:#f6fcf8;--fg:#1b2c25;--mut:#63776d;--line:#c7e4d4;
   --or:#0f956b;--or2:#4dcba0;--or-ink:#08664a;--soft:#e7f8f0;--soft2:#d2f2e4;
   --sh1:0 1px 0 #d6ece1,0 10px 24px -12px #0f956b1c;--sh2:0 18px 40px -16px #0f956b32;
 }
 body[data-theme="light"][data-accent="violet"]{
-  color-scheme:light;--bg:#f7f5ff;--card:#fdfcff;--fg:#25213a;--mut:#716b88;--line:#e2daf7;
+  color-scheme:light;--bg:#f0ecff;--card:#faf8ff;--fg:#25213a;--mut:#716b88;--line:#d1c4f5;
   --or:#7652d6;--or2:#a78bfa;--or-ink:#5835b2;--soft:#f1ecff;--soft2:#e4dcff;
   --sh1:0 1px 0 #e2daf7,0 10px 24px -12px #7652d620;--sh2:0 18px 40px -16px #7652d638;
 }
 body[data-theme="dark"][data-accent="orange"]{
-  color-scheme:dark;--bg:#10151e;--card:#171f2c;--fg:#e8edf6;--mut:#a7b5c9;--line:#303a49;
+  color-scheme:dark;--bg:#1b1411;--card:#281e19;--fg:#f2e9e4;--mut:#c3aaa0;--line:#684631;
   --or:#ff9657;--or2:#ffc078;--or-ink:#ffba8a;--soft:#33251f;--soft2:#412c23;
   --ok:#5fe0a0;--ok-bg:#17372b;--warn:#f3d27b;--warn-bg:#352e1c;--bad:#ff9da7;--bad-bg:#3a2028;--note:#302b1e;
   --sh1:0 1px 0 #303a49,0 10px 28px -12px #0006;--sh2:0 18px 40px -16px #0008;
 }
 body[data-theme="dark"][data-accent="mint"]{
-  color-scheme:dark;--bg:#0e1919;--card:#142322;--fg:#e5f5ee;--mut:#9ebbb0;--line:#2b4641;
+  color-scheme:dark;--bg:#0b1c17;--card:#122e24;--fg:#e5f5ee;--mut:#a4c9b8;--line:#2a664f;
   --or:#48d3a0;--or2:#7ce6bd;--or-ink:#72e6bc;--soft:#18352e;--soft2:#21463b;
   --ok:#70e5a3;--ok-bg:#153a2d;--warn:#f4d77f;--warn-bg:#352f1d;--bad:#ff9da7;--bad-bg:#3a2028;--note:#302b1e;
   --sh1:0 1px 0 #2b4641,0 10px 28px -12px #0006;--sh2:0 18px 40px -16px #0008;
 }
 body[data-theme="dark"][data-accent="violet"]{
-  color-scheme:dark;--bg:#131321;--card:#1d1c30;--fg:#eeebff;--mut:#b2accf;--line:#393650;
+  color-scheme:dark;--bg:#171126;--card:#241938;--fg:#eeebff;--mut:#b9add2;--line:#5b4377;
   --or:#b19aff;--or2:#d0c0ff;--or-ink:#c4b4ff;--soft:#302544;--soft2:#3c2d55;
   --ok:#70e5a3;--ok-bg:#153a2d;--warn:#f4d77f;--warn-bg:#352f1d;--bad:#ff9da7;--bad-bg:#3a2028;--note:#302b1e;
   --sh1:0 1px 0 #393650,0 10px 28px -12px #0006;--sh2:0 18px 40px -16px #0008;
