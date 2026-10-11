@@ -11,6 +11,7 @@ function orderOut(o, lines) {
   const out = {
     id: o.id, number: o.number, table_label: o.table_label || "", status: o.status, total: o.total,
     cancel_reason: o.cancel_reason || null, created_at: o.created_at, updated_at: o.updated_at,
+    accepted_at: o.accepted_at || null, estimated_ready_at: o.estimated_ready_at || null,
     item_count: o.item_count != null ? o.item_count : undefined,
     next: TRANSITIONS[o.status] || [],
   };
@@ -99,10 +100,13 @@ on("POST", "/api/panel/orders/:id/status", "orders", async ({ request, env, s, p
   const from = oneOf(b.from, ORDER_STATUSES, "وضعیت فعلی");
   if (!TRANSITIONS[from].includes(to)) throw new ApiError(422, "invalid_transition", "این تغییر وضعیت مجاز نیست.");
   const reason = to === "cancelled" ? str(b.reason, { max: 200, min: 2, field: "دلیل لغو" }) : null;
+  const estimateMinutes = to === "preparing" ? int(b.estimated_minutes, { min: 5, max: 240, field: "زمان تقریبی آماده‌سازی (دقیقه)" }) : null;
   const t = Date.now();
-  // به‌روزرسانی شرطی: اگر وضعیت در این فاصله تغییر کرده باشد، چیزی تغییر نمی‌کند (جلوگیری از عملیات تکراری)
-  const r = await env.DB.prepare("UPDATE orders SET status = ?, cancel_reason = COALESCE(?, cancel_reason), updated_at = ? WHERE id = ? AND restaurant_id = ? AND status = ?")
-    .bind(to, reason, t, p.id, s.restaurantId, from).run();
+  const estimatedReadyAt = estimateMinutes == null ? null : t + estimateMinutes * 60 * 1000;
+  const acceptedAt = to === "preparing" ? t : null;
+  // پذیرش سفارش بدون زمان تخمینی مجاز نیست؛ زمان و وضعیت در یک به‌روزرسانی شرطی ثبت می‌شوند.
+  const r = await env.DB.prepare("UPDATE orders SET status = ?, cancel_reason = COALESCE(?, cancel_reason), accepted_at = CASE WHEN ? IS NOT NULL THEN ? ELSE accepted_at END, estimated_ready_at = CASE WHEN ? IS NOT NULL THEN ? ELSE estimated_ready_at END, updated_at = ? WHERE id = ? AND restaurant_id = ? AND status = ?")
+    .bind(to, reason, acceptedAt, acceptedAt, estimatedReadyAt, estimatedReadyAt, t, p.id, s.restaurantId, from).run();
   if (!r.meta || !r.meta.changes) {
     const cur = await env.DB.prepare("SELECT status FROM orders WHERE id = ? AND restaurant_id = ?").bind(p.id, s.restaurantId).first();
     if (!cur) throw new ApiError(404, "not_found", "سفارش پیدا نشد.");
@@ -110,8 +114,8 @@ on("POST", "/api/panel/orders/:id/status", "orders", async ({ request, env, s, p
   }
   const o = await env.DB.prepare("SELECT number FROM orders WHERE id = ?").bind(p.id).first();
   await env.DB.prepare("INSERT INTO order_events (order_id, restaurant_id, from_status, to_status, actor, created_at) VALUES (?, ?, ?, ?, ?, ?)").bind(p.id, s.restaurantId, from, to, s.actor, t).run();
-  await audit(env.DB, s.restaurantId, s.actor, "order.status", "order", p.id, { number: o.number, from, to, reason });
-  return json({ ok: true, status: to, next: TRANSITIONS[to] });
+  await audit(env.DB, s.restaurantId, s.actor, "order.status", "order", p.id, { number: o.number, from, to, reason, estimated_minutes: estimateMinutes, estimated_ready_at: estimatedReadyAt });
+  return json({ ok: true, status: to, next: TRANSITIONS[to], estimated_ready_at: estimatedReadyAt });
 });
 
 // ---------- منو ----------
