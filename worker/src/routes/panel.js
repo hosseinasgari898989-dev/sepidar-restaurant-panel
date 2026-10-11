@@ -402,11 +402,24 @@ on("PATCH", "/api/panel/reviews/:id", "reviews", async ({ request, env, s, p }) 
   if ("visibility" in b) f.visibility = oneOf(b.visibility, ["published", "hidden"], "وضعیت انتشار");
   if ("flagged" in b) { f.flagged = bool(b.flagged) ? 1 : 0; f.flag_reason = f.flagged ? str(b.flag_reason, { max: 120, field: "دلیل گزارش" }) || "نامناسب" : null; }
   if ("reply" in b) { f.reply = str(b.reply, { max: 500, field: "پاسخ" }) || null; f.reply_at = f.reply ? Date.now() : null; }
+  if ("featured" in b) {
+    f.featured = bool(b.featured) ? 1 : 0;
+    f.feature_style = f.featured
+      ? oneOf(b.feature_style || "glow", ["glow", "shine", "burst"], "جلوه ویژه")
+      : "glow";
+  } else if ("feature_style" in b) {
+    f.feature_style = oneOf(b.feature_style, ["glow", "shine", "burst"], "جلوه ویژه");
+  }
   const keys = Object.keys(f);
   if (!keys.length) throw new ApiError(422, "validation_error", "تغییری ارسال نشده است.");
   const r = await env.DB.prepare(`UPDATE reviews SET ${keys.map((k) => `${k} = ?`).join(", ")} WHERE id = ? AND restaurant_id = ?`).bind(...keys.map((k) => f[k]), p.id, s.restaurantId).run();
   if (!r.meta.changes) throw new ApiError(404, "not_found", "نظر پیدا نشد.");
-  await audit(env.DB, s.restaurantId, s.actor, "review.update", "review", p.id, { visibility: f.visibility, flagged: f.flagged, replied: "reply" in f ? !!f.reply : undefined });
+  const featureChange = "featured" in f || "feature_style" in f;
+  await audit(env.DB, s.restaurantId, s.actor, featureChange ? "review.feature" : "review.update", "review", p.id, {
+    visibility: f.visibility, flagged: f.flagged,
+    replied: "reply" in f ? !!f.reply : undefined,
+    featured: f.featured, feature_style: f.feature_style,
+  });
   const row = await env.DB.prepare("SELECT * FROM reviews WHERE id = ?").bind(p.id).first();
   return json({ ok: true, review: { ...row, flagged: !!row.flagged } });
 });
