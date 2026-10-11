@@ -36,3 +36,15 @@ Fetch and inspect the current files individually (avoid huge parallel responses)
 - admin review/token/QR/theme views and CSS
 - customer `index.html`
 Then continue from the first unresolved issue with tests and small commits.
+
+
+## Follow-up work added on 2026-10-11 (keep on feature branch)
+- Dashboard activity feed now maps known events to Persian labels and uses a Persian safe fallback instead of exposing raw English action identifiers.
+- Panel dropdowns are wrapped in in-site custom menus (mobile/dark friendly); validate interaction on the final browser build.
+- Access-token list now receives server time to avoid false expired labels caused by a device-clock mismatch. Single-token delete removes non-current rows and revokes their dependent sessions; bulk cleanup protects the token currently authenticating the session, or the newest still-valid token for bootstrap sessions.
+- System category `other` is photo-only: UI hides emoji/customization fields, menu serialization strips old customization/model metadata, and API writes force photo-only fields. A valid R2 media URL is still required.
+- Admin review screen now supports toggling a highlighted review and cycling styles (`glow`, `shine`, `burst`). Public review vote route and migration `worker/migrations/0005_review_reactions_and_featured.sql` were added for one vote per anonymous browser/review.
+- Food editor now has a web-price search panel with selectable source results. The Worker route uses the Tavily API; it stays unavailable until Secret `TAVILY_API_KEY` is configured. Price suggestions are not automatically saved.
+- R2 binding `FOOD_IMAGES` is now declared against bucket `sepidar-food-images` in `worker/wrangler.jsonc`, but Cloudflare API returned error 10042 because R2 has not yet been activated from the Dashboard. Create the bucket only after activating R2.
+- Static syntax check passed for the changed panel JS modules, Worker routes/menu library, customer inline script, and JSONC (module imports/exports were stripped for parse-only checks). No interactive regression test has been run for these new changes.
+- **Before any preview/live deployment:** activate R2 in the Cloudflare Dashboard, create `sepidar-food-images`, configure `TAVILY_API_KEY` as a Worker Secret, apply migration 0005 to the intended D1 environment, deploy only to a controlled preview, then test upload/voting/highlighting/token cleanup/web-price search before merging. Do not deploy unfinished feature branch to production.
