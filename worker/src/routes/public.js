@@ -45,13 +45,14 @@ export async function handlePublic(request, env, url, headers) {
       { key: "day", limit: 6, windowMs: DAY_MS },
     ];
     await enforceClientLimits(db, "lead", clientHash, limits);
+    // هر تلاش پس از عبور از سهمیه شمرده می‌شود، حتی اگر داده‌ی فرم نامعتبر باشد.
+    await recordClientLimits(db, "lead", clientHash, limits);
     const name = str(b.restaurant_name, { max: 60, min: 2, field: "نام رستوران" });
     const phone = str(b.phone, { max: 20, min: 7, field: "شماره تماس" });
     if (!/^[0-9۰-۹+\-\s]{7,20}$/.test(phone)) throw new ApiError(422, "validation_error", "شماره تماس معتبر نیست.");
     const note = str(b.note, { max: 400, field: "توضیحات" });
     const t = Date.now(), id = randomId(10);
     await db.prepare("INSERT INTO leads (id, restaurant_name, phone, note, status, created_at, updated_at) VALUES (?, ?, ?, ?, 'new', ?, ?)").bind(id, name, phone, note || null, t, t).run();
-    await recordClientLimits(db, "lead", clientHash, limits);
     return json({ ok: true }, 201, { headers });
   }
 
@@ -104,6 +105,8 @@ export async function handlePublic(request, env, url, headers) {
       { key: "day", limit: 8, windowMs: DAY_MS },
     ];
     await enforceClientLimits(db, "review", clientHash, limits);
+    // ارسال تکراری یا نامعتبر هم بعد از بررسی سهمیه، در محدودسازی شمرده می‌شود.
+    await recordClientLimits(db, "review", clientHash, limits);
     const rating = int(b.rating, { min: 1, max: 5, field: "امتیاز" });
     let itemName = null, itemId = null;
     if (b.item_id) {
@@ -118,7 +121,6 @@ export async function handlePublic(request, env, url, headers) {
     await db.prepare("INSERT INTO reviews (id, restaurant_id, order_number, item_id, item_name, rating, comment, author_name, client_key_hash, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
       .bind(randomId(10), r.id, b.order_number ? int(b.order_number, { min: 1, max: 1e9, field: "شماره سفارش" }) : null, itemId, itemName, rating,
         str(b.comment, { max: 600, field: "متن نظر" }) || null, str(b.author_name, { max: 40, field: "نام" }) || null, clientHash, t).run();
-    await recordClientLimits(db, "review", clientHash, limits);
     return json({ ok: true }, 201, { headers });
   }
 
@@ -131,6 +133,8 @@ export async function handlePublic(request, env, url, headers) {
       { key: "day", limit: 40, windowMs: DAY_MS },
     ];
     await enforceClientLimits(db, "order", clientHash, limits);
+    // تلاش سفارش پیش از اعتبارسنجی سبد شمرده می‌شود تا ارسال نامعتبر نتواند بی‌هزینه تکرار شود.
+    await recordClientLimits(db, "order", clientHash, limits);
     if (!Array.isArray(b.lines) || !b.lines.length || b.lines.length > 30) throw new ApiError(422, "validation_error", "سبد خرید معتبر نیست.");
     const menu = await loadMenu(db, r.id);
     const lines = b.lines.map((l) => {
@@ -152,7 +156,6 @@ export async function handlePublic(request, env, url, headers) {
     await db.batch(lines.map((l) => db.prepare("INSERT INTO order_items (order_id, restaurant_id, item_id, category_id, name, emoji, color1, color2, image_url, qty, unit_price, line_total, options, removed, note) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
       .bind(id, r.id, l.item.id, l.cat.id, l.item.name, l.item.emoji, l.cat.colors[0], l.cat.colors[1], l.item.image_url || null, l.qty, l.unit, l.unit * l.qty, JSON.stringify(l.options), JSON.stringify(l.removed), l.note || null)));
     await db.prepare("INSERT INTO order_events (order_id, restaurant_id, from_status, to_status, actor, created_at) VALUES (?, ?, NULL, 'new', 'customer', ?)").bind(id, r.id, t).run();
-    await recordClientLimits(db, "order", clientHash, limits);
     const o = await db.prepare("SELECT number FROM orders WHERE id = ?").bind(id).first();
     await audit(db, r.id, "customer", "order.create", "order", id, { number: o.number, total });
     return json({ ok: true, order: { id, number: o.number, total, status: "new", created_at: t, estimated_ready_at: null, tracking_token: trackingToken } }, 201, { headers });
