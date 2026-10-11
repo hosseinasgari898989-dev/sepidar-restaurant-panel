@@ -257,6 +257,7 @@ on("POST", "/api/panel/menu/categories", "menu", async ({ request, env, s }) => 
   const id = str(b.id, { max: 32, min: 1, field: "شناسه دسته" }).toLowerCase();
   if (!/^[a-z][a-z0-9-]{1,31}$/.test(id)) throw new ApiError(422, "validation_error", "شناسه دسته باید با حروف لاتین کوچک، عدد یا خط تیره باشد.");
   const f = catFields(b, false);
+  if (f.name === "سایر" && id !== "other") throw new ApiError(409, "reserved_category", "نام «سایر» متعلق به دسته‌ی سیستمی است؛ برای این رفتار از شناسه‌ی other استفاده کنید.");
   const exists = await env.DB.prepare("SELECT 1 FROM categories WHERE restaurant_id = ? AND id = ?").bind(s.restaurantId, id).first();
   if (exists) throw new ApiError(409, "duplicate", "دسته‌ای با این شناسه وجود دارد.");
   const max = await env.DB.prepare("SELECT COALESCE(MAX(sort), -1) m FROM categories WHERE restaurant_id = ?").bind(s.restaurantId).first();
