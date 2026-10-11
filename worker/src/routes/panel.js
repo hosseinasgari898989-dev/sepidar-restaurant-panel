@@ -210,6 +210,8 @@ on("POST", "/api/panel/menu/images", "menu", async ({ request, env, url, s }) =>
   const keyHash = await sha256Hex("panel:image-upload:" + s.idHash);
   const key = "panel:image-upload:" + keyHash.slice(0, 36);
   await checkLimit(env.DB, key, policy);
+  // هر تلاش آپلود، از جمله فایل نامعتبر، برای جلوگیری از آزمون مکرر شمرده می‌شود.
+  await hit(env.DB, key, policy);
   const length = Number(request.headers.get("Content-Length") || 0);
   if (length > 5 * 1024 * 1024 + 64 * 1024) throw new ApiError(413, "image_too_large", "حجم هر عکس حداکثر ۵ مگابایت است.");
   if (!(request.headers.get("Content-Type") || "").toLowerCase().startsWith("multipart/form-data")) throw new ApiError(415, "unsupported_media_type", "عکس باید از طریق فرم بارگذاری ارسال شود.");
@@ -222,7 +224,6 @@ on("POST", "/api/panel/menu/images", "menu", async ({ request, env, url, s }) =>
   if (!ext) throw new ApiError(415, "invalid_image_type", "فقط JPEG، PNG، WebP یا AVIF مجاز است؛ SVG و فایل‌های اجرایی پذیرفته نمی‌شوند.");
   const header = new Uint8Array(await file.slice(0, 16).arrayBuffer());
   if (!validImageSignature(header, type)) throw new ApiError(415, "invalid_image_signature", "محتوای فایل با نوع عکس اعلام‌شده سازگار نیست.");
-  await hit(env.DB, key, policy);
   const objectKey = `${s.restaurantId}/${randomId(18)}.${ext}`;
   await env.FOOD_IMAGES.put(objectKey, file, {
     httpMetadata: { contentType: type, cacheControl: "public, max-age=31536000, immutable" },
