@@ -44,7 +44,7 @@ export default {
                   <label class="fld"><span>سطح دسترسی</span><select name="role"><option value="platform_admin">مدیر سپیدار — دسترسی کامل</option><option value="owner">رستوران‌دار — دسترسی محدود</option></select></label>
                   <label class="fld"><span>مدت اعتبار توکن</span><select name="duration"><option value="1h">۱ ساعت</option><option value="1d">۱ روز</option><option value="1y">۱ سال</option><option value="never" selected>دائمی — تا زمان لغو</option></select></label>
                   <button class="btn" id="createAccessToken" type="submit">＋ افزودن توکن</button>
-                  <p class="token-help">مقدار کامل توکن فقط یک بار پس از ساخت نشان داده می‌شود. آن را در جای امن نگه دار. نشست ورود توکن‌های مدیریتی حداکثر ۳۰ روزه است، اما خود توکن تا پایان اعتبار انتخابی باقی می‌ماند.</p>
+                  <p class="token-help">مقدار کامل توکن فقط یک بار پس از ساخت نشان داده می‌شود. آن را در جای امن نگه دار. اعتبار توکن و نشست جداست؛ نشست طبق تنظیمات سرور منقضی می‌شود (در پیکربندی فعلی ۸ ساعت)، حتی اگر خود توکن طولانی‌تر معتبر باشد.</p>
                   <p class="err" id="tokenFormError" role="alert"></p>
                 </form>
                 <div class="token-created" id="tokenCreated" hidden role="status" aria-live="polite">
