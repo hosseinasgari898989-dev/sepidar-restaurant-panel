@@ -572,8 +572,11 @@ on("POST", "/api/panel/ai-search", "menu", async ({ request, env, s }) => {
   });
   return json({
     ok: true, query: searchQuery, target_item: targetItem, answer: "", results: finalResults,
-    warning: "عامل هوشمند Cloudflare فقط شواهد منبع را بررسی می‌کند؛ قیمت تنها وقتی ارائه می‌شود که نقل‌قول حاوی نام غذا و واحد پول دقیقاً در محتوای منبع وجود داشته باشد. وزن پرس، شهر و زمان را قبل از اعمال بررسی کن.",
-    fetched_at: Date.now(), agent: "cloudflare-workers-ai",
+    warning: usedRuleFallback
+      ? "عامل هوشمند در این درخواست پاسخ ساختاریافته نداد؛ فقط فیلتر محافظه‌کارانهٔ نام دقیق غذا، شواهد منوی سفارش و تاریخ اجرا شد. قیمت تنها با واحد پول صریح پیشنهاد می‌شود."
+      : "عامل هوشمند Cloudflare فقط شواهد منبع را بررسی می‌کند؛ قیمت تنها وقتی ارائه می‌شود که نام غذا و واحد پول صریح در محتوای منبع پیدا شود. وزن پرس، شهر و زمان را قبل از اعمال بررسی کن.",
+    fetched_at: Date.now(), agent: usedRuleFallback ? "cloudflare-workers-ai+safe-fallback" : "cloudflare-workers-ai",
+    agent_fallback: usedRuleFallback,
   });
 });
 
@@ -739,7 +742,14 @@ on("GET", "/api/panel/reviews", "reviews", async ({ env, s, url }) => {
       CASE WHEN EXISTS (SELECT 1 FROM review_bans b WHERE b.restaurant_id = r.restaurant_id AND b.client_key_hash = r.client_key_hash AND (b.expires_at IS NULL OR b.expires_at > ${Date.now()})) THEN 1 ELSE 0 END AS author_banned,
       (SELECT b.expires_at FROM review_bans b WHERE b.restaurant_id = r.restaurant_id AND b.client_key_hash = r.client_key_hash AND (b.expires_at IS NULL OR b.expires_at > ${Date.now()}) LIMIT 1) AS ban_expires_at,
       (SELECT b.reason FROM review_bans b WHERE b.restaurant_id = r.restaurant_id AND b.client_key_hash = r.client_key_hash AND (b.expires_at IS NULL OR b.expires_at > ${Date.now()}) LIMIT 1) AS ban_reason
-      FROM reviews r WHERE ${where.join(" AND ")} ORDER BY r.created_at DESC LIMIT 100`).bind(...args).all(),
+      FROM reviews r
+      LEFT JOIN (
+        SELECT review_id,
+          SUM(CASE WHEN vote = 'like' THEN 1 ELSE 0 END) AS likes,
+          SUM(CASE WHEN vote = 'dislike' THEN 1 ELSE 0 END) AS dislikes
+        FROM review_votes WHERE restaurant_id = ? GROUP BY review_id
+      ) vote_counts ON vote_counts.review_id = r.id
+      WHERE ${where.join(" AND ")} ORDER BY r.created_at DESC LIMIT 100`).bind(s.restaurantId, ...args).all(),
     env.DB.prepare("SELECT COUNT(*) n, AVG(rating) avg, SUM(CASE WHEN visibility = 'hidden' THEN 1 ELSE 0 END) hidden, SUM(flagged) flagged, SUM(CASE WHEN reply IS NOT NULL THEN 1 ELSE 0 END) replied FROM reviews WHERE restaurant_id = ?").bind(s.restaurantId).first(),
     env.DB.prepare("SELECT rating, COUNT(*) n FROM reviews WHERE restaurant_id = ? GROUP BY rating").bind(s.restaurantId).all(),
   ]);
