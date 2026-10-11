@@ -78,6 +78,14 @@ function itemEditor(ctx, cats, item, onSaved, catId) {
         <label class="fld"><span>نام غذا</span><input name="name" value="${it.name}" maxlength="60" required></label>
         <label class="fld"><span>دسته</span><select name="category_id">${cats.map((x) => html`<option value="${x.id}" ${x.id === c.id ? "selected" : ""}>${x.emoji} ${x.name}${x.id === "other" ? " · فقط عکس واقعی" : ""}</option>`)}</select></label>
         <label class="fld"><span>قیمت پایه <small>(تومان)</small></span><input name="price" value="${it.price === "" ? "" : F(it.price).replace(/٬/g, "")}" inputmode="numeric" required></label>
+        <div class="full price-search-panel">
+          <div class="price-search-fields">
+            <label class="fld"><span>جستجوی قیمت واقعی در وب</span><input id="priceSearchQuery" value="${it.name ? `قیمت روز ${it.name} ایران تومان` : ""}" maxlength="180" placeholder="مثلاً قیمت روز مرغ تازه در تهران"></label>
+            <button type="button" class="btn soft" id="searchPrice">🔎 جستجوی قیمت روز</button>
+          </div>
+          <p class="mut price-search-hint">نتایج همراه منبع نمایش داده می‌شوند. قیمت را فقط پس از بررسی جزئیات، دستی تأیید کن.</p>
+          <div id="priceSearchResults" aria-live="polite"></div>
+        </div>
         ${c.id !== "other" ? html`<label class="fld"><span>ایموجی <small>(برای کاشی‌های سه‌بعدی دسته‌های عادی)</small></span><input name="emoji" value="${it.emoji}" maxlength="8"></label>` : html`<div class="note-box warn full">📷 در دسته «سایر» فقط عکس واقعی نمایش داده می‌شود؛ استیکر، ایموجی و مدل سه‌بعدی خودکار غیرفعال‌اند.</div>`}
         <label class="fld full"><span>توضیحات</span><input name="description" value="${it.description}" maxlength="200"></label>
         <label class="fld full"><span>آدرس عکس <small>(در صورت آپلود R2، خودکار پر می‌شود)</small></span><input name="image_url" value="${it.image_url}" maxlength="500" inputmode="url" dir="ltr" placeholder="https://…/media/main/…"></label>
@@ -97,6 +105,39 @@ function itemEditor(ctx, cats, item, onSaved, catId) {
     const f = s.body.querySelector("#f");
     const uploadButton = s.body.querySelector("#uploadImage");
     const uploadHelp = s.body.querySelector("#imageUploadHelp");
+    const priceSearchButton = s.body.querySelector("#searchPrice");
+    const priceSearchQuery = s.body.querySelector("#priceSearchQuery");
+    const priceSearchResults = s.body.querySelector("#priceSearchResults");
+    priceSearchResults.onclick = (event) => {
+      const apply = event.target.closest("[data-use-price]");
+      if (!apply) return;
+      f.price.value = apply.dataset.usePrice;
+      sync();
+      toast("قیمت پیشنهادی وارد شد؛ برای ذخیره، دکمهٔ ذخیره تغییرات را بزن.");
+    };
+    priceSearchButton.onclick = async () => {
+      const query = String(priceSearchQuery.value || "").trim();
+      if (query.length < 2) { priceSearchResults.innerHTML = html`<div class="note-box warn">نام غذا یا مادهٔ اولیه را وارد کن.</div>`.s; return; }
+      priceSearchResults.innerHTML = html`<div class="price-search-loading"><span class="spinner"></span> در حال جستجو در منابع وب…</div>`.s;
+      busy(priceSearchButton, async () => {
+        try {
+          const result = await ctx.api.searchPrices(query);
+          priceSearchResults.innerHTML = html`
+            ${result.answer ? html`<div class="price-search-answer"><b>خلاصهٔ جستجو</b><p>${result.answer}</p></div>` : ""}
+            <div class="price-search-warning">${result.warning || "قیمت‌ها را پیش از اعمال بررسی کن."}</div>
+            ${result.results?.length ? result.results.map((item) => html`<article class="price-search-result">
+              <a href="${item.url}" target="_blank" rel="noopener noreferrer">${item.title || "منبع قیمت"} ↗</a>
+              ${item.published_at ? html`<small>تاریخ منبع: ${item.published_at}</small>` : ""}
+              <p>${item.snippet || "برای مشاهدهٔ جزئیات، منبع را باز کن."}</p>
+              ${item.candidate_price ? html`<div class="price-search-apply"><strong>${money(item.candidate_price)} تومان</strong><button type="button" class="btn sm ghost" data-use-price="${item.candidate_price}">واردکردن این قیمت</button></div>` : ""}
+            </article>`).join("") : html`<div class="note-box">منبع قابل استنادی پیدا نشد. عبارت را دقیق‌تر بنویس و دوباره جستجو کن.</div>`}
+            <small class="mut price-search-time">آخرین جستجو: ${dateTime(result.fetched_at || Date.now())}</small>
+          `.s;
+        } catch (err) {
+          priceSearchResults.innerHTML = html`<div class="note-box warn"><b>جستجو انجام نشد</b><p>${err.message || "خطای دریافت قیمت"}</p><small>برای جستجوی زنده لازم است کلید سرویس وب در Secrets سرور تنظیم شده باشد.</small></div>`.s;
+        }
+      });
+    };
     uploadHelp.textContent = ctx.demo ? "حالت نمایشی: عکس فقط پیش‌نمایش محلی است و در سرور ذخیره نمی‌شود." : ctx.capability("image_upload") ? "پس از آپلود، عکس در R2 ذخیره و در منوی مشترک مشتری/مدیریت نمایش داده می‌شود." : "R2 هنوز در Cloudflare فعال نشده؛ آپلود واقعی تا زمان اتصال فضای ذخیره‌سازی در دسترس نیست.";
     if (!ctx.demo && !ctx.capability("image_upload")) uploadButton.disabled = true;
     const sync = () => {
