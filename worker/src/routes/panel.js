@@ -531,6 +531,7 @@ on("DELETE", "/api/panel/reviews/:id/ban", "reviews", async ({ env, s, p }) => {
 on("DELETE", "/api/panel/reviews/:id", "reviews", async ({ env, s, p }) => {
   const review = await env.DB.prepare("SELECT id FROM reviews WHERE id = ? AND restaurant_id = ?").bind(p.id, s.restaurantId).first();
   if (!review) throw new ApiError(404, "not_found", "نظر پیدا نشد.");
+  await env.DB.prepare("DELETE FROM review_votes WHERE review_id = ? AND restaurant_id = ?").bind(p.id, s.restaurantId).run();
   await env.DB.prepare("DELETE FROM reviews WHERE id = ? AND restaurant_id = ?").bind(p.id, s.restaurantId).run();
   await audit(env.DB, s.restaurantId, s.actor, "review.delete", "review", review.id, null);
   return json({ ok: true });
