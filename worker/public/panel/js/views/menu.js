@@ -131,7 +131,7 @@ function itemEditor(ctx, cats, item, onSaved, catId) {
               <p>${item.snippet || "برای مشاهدهٔ جزئیات، منبع را باز کن."}</p>
               ${item.candidate_price ? html`<div class="price-search-apply"><strong>${money(item.candidate_price)} تومان</strong><button type="button" class="btn sm ghost" data-use-price="${item.candidate_price}">واردکردن این قیمت</button></div>` : ""}
             </article>`).join("") : html`<div class="note-box">منبع قابل استنادی پیدا نشد. عبارت را دقیق‌تر بنویس و دوباره جستجو کن.</div>`}
-            <small class="mut price-search-time">آخرین جستجو: ${dateTime(result.fetched_at || Date.now())}</small>
+            <small class="mut price-search-time">آخرین جستجو: ${new Date(result.fetched_at || Date.now()).toLocaleString("fa-IR", { timeZone: "Asia/Tehran", hour: "2-digit", minute: "2-digit" })}</small>
           `.s;
         } catch (err) {
           priceSearchResults.innerHTML = html`<div class="note-box warn"><b>جستجو انجام نشد</b><p>${err.message || "خطای دریافت قیمت"}</p><small>برای جستجوی زنده لازم است کلید سرویس وب در Secrets سرور تنظیم شده باشد.</small></div>`.s;
