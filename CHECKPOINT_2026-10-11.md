@@ -123,3 +123,11 @@ Then continue from the first unresolved issue with tests and small commits.
 - Admin review GET API now includes per-review 👍/👎 totals from `review_votes`. Admin review cards render a live preview state for `featured` styles `glow/shine/burst`, indicate that the effect is active on the customer site, show its Persian style name, and display vote counts.
 - D1 validation confirmed reviews have `featured/feature_style`, review vote aggregates query successfully, and both sample reviews have likes/dislikes data available to the panel. Static syntax checks passed for all deployed Worker modules and menu/review assets.
 - Direct Cloudflare AI API smoke test returned structured `response.relevant_indices`; the application parser now handles that exact response shape. A full authenticated price-search click and visual administrator tap-through still needs an owner-session test after refreshing the panel.
+
+
+## Final panel-14 verification — 2026-10-11 18:30 UTC
+- Reproduced the actual Workers AI response shape through the Cloudflare API: the output contains `response: { relevant_indices: [...] }` and a second string in `choices[0].message.content`. The application previously stringified the object to `[object Object]`, which triggered the “agent could not evaluate sources” error. Panel-13 added structured parsing; panel-14 also tightened final exact-food/menu evidence gates.
+- Final live health returned `2026-10-panel-14` with `ready`; latest deployment is at 100% traffic and bindings include `AI`, `DB`, `IMAGEKIT_URL_ENDPOINT`, `TAVILY_API_KEY`, and session/auth secrets.
+- Confirmed source and Worker-pinned menu JS both contain exactly one `id="q"` regular food search, plus the separate AI price search section. The served source can be truncated by extraction tools near the end, but the pinned asset itself was checked directly and contains the original food search.
+- Review admin assets now render the active highlight effect/style, a status indicating it appears on the customer site, and 👍/👎 totals; the D1 aggregate query successfully returned current counts for sample reviews.
+- User should refresh/reopen the admin panel before the next authenticated AI price search test; full end-to-end search with the user's panel session remains unautomated.
