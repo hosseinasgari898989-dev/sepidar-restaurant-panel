@@ -85,3 +85,22 @@ Continue with a single-file fetch of `worker/src/routes/panel.js` around `menu/i
 - Latest branch head at this point: `c9f65764a3511e217d935f6fe7d14f4daf49db39`.
 - Reminder: current `worker/wrangler.jsonc` still has no active `FOOD_IMAGES` R2 binding; do not mark uploads ready or deploy the photo feature until R2 is enabled in Cloudflare and the binding is configured.
 - Next: finish focused theme/grid audit, check API/UI route alignment, re-run validation after any edit, inspect branch diff/CI, then open draft PRs only after checks. Do not merge/deploy or write to production D1.
+
+
+## Latest continuation changes after branch-vs-main reconciliation
+- Compared the feature branch with current `main`; the branches are divergent. Main had three newer commits, and their critical refinements were ported manually where needed rather than merging blindly.
+- Ported main's global authentication throttle into `worker/src/lib/auth.js`: the global limit now runs before parsing or validating the browser device identifier, and malformed JSON / invalid device IDs consume the global attempt counter. New blob SHA: `cdf773ecfcd9467db231a2ac38e2c702c8512fb1`.
+- Ported main's robust admin device-cookie parsing into `worker/public/panel/js/api.js`: cookie parsing no longer relies on the fragile regex, and a valid cookie restores the anonymous device ID in localStorage after it was cleared. New blob SHA: `c69d3bec186c93c0c9fe0d8b9b23862cf8b363d2`.
+- Slimmed `worker/src/lib/panel-overrides.js` to only four critical pinned paths: `/panel/`, `/panel/index.html`, `/panel/panel.css`, `/panel/js/ui.js`. Other panel JS modules are now served from the Worker ASSETS binding, matching the current main-branch architecture. Verified all four embedded bodies are byte-identical to the source assets. New blob SHA: `c7a3d5835972217014c875aa6e920ff36af723fc`.
+- Added a server-side order validation guard in `worker/src/routes/public.js`: if a product is in category `other` and has no `image_url`, the API rejects the order with `image_required_for_other`, even if the client-side UI is bypassed. Exact prior file backup: `backups/2026-10-11/public-routes-before-other-order-guard.js`, backup commit `f41cfff3207f498c9cc51eabbf0e38dbc543577b`. New routes blob SHA: `7c70a7178648609921fdef439f7aab55dd34f5c8`.
+- Static validation re-run after these edits: parse checks passed for Worker entry, public/panel routes, auth, rate limiter, override map and all panel JS modules; panel CSS braces balanced; four override bodies match source; panel HTML contains two `selection9` cache-version markers and no old `demo-qr8` marker; customer inline JS parses and CSS braces balance; two theme choices and three accent choices verified.
+- The customer-side code already includes the latest main-branch behaviors checked: robust visitor cookie restoration; disabled review form on server response `review_banned`; photo placeholder instead of 3D fallback for `other`; quick add and customization add are blocked for `other` without a real image; and it reads the `?r=` restaurant ID used by QR. The scoped selection guard and 2-column desktop theme grid remain intact.
+- Latest validated paths / hashes at checkpoint time:
+  - `worker/src/routes/public.js`: `7c70a7178648609921fdef439f7aab55dd34f5c8`
+  - `worker/src/lib/auth.js`: `cdf773ecfcd9467db231a2ac38e2c702c8512fb1`
+  - `worker/public/panel/js/api.js`: `c69d3bec186c93c0c9fe0d8b9b23862cf8b363d2`
+  - `worker/src/lib/panel-overrides.js`: `c7a3d5835972217014c875aa6e920ff36af723fc`
+  - `worker/public/panel/panel.css`: `8513ee2b3b060dc1e3b10648f13e48b024d01ea3`
+  - `worker/public/panel/index.html`: `f6ff14f566328647c1b325509d5bd3874accf37c`
+  - customer `index.html`: `3e1d0aafa5c6bbd54e4849dddecca76b82214048`
+- Important remaining blockers: R2 is not yet active (no `FOOD_IMAGES` binding in `worker/wrangler.jsonc`); full visual/browser testing has not run; production deployment state is not validated; branches remain divergent from main. Do not merge/deploy until CI and end-to-end checks are resolved. Never reset or destructively alter production D1.
