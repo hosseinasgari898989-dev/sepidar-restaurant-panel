@@ -450,7 +450,7 @@ on("POST", "/api/panel/ai-search", "menu", async ({ request, env, s }) => {
   }
   let agentText = typeof agentOutput === "string"
     ? agentOutput
-    : (agentOutput?.response || agentOutput?.output_text || agentOutput?.result?.response || "");
+    : (agentOutput?.response || agentOutput?.output_text || agentOutput?.result?.response || agentOutput?.choices?.[0]?.message?.content || "");
   agentText = String(agentText).trim().replace(/^\x60{3}(?:json)?\s*/i, "").replace(/\s*\x60{3}$/, "");
   let evaluations;
   try {
